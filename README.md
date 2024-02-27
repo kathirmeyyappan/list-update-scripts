@@ -1,2 +1,2 @@
-# ssi2-project
-A record of the R code that I used to generate images for a paper in SOSC 13200
+# life's work update scripts
+Here are some cool visuals of the imported data (generated with R)
