@@ -4,7 +4,7 @@ library(estimatr)
 dat <- read.csv("C:/Users/kathi/Downloads/anime_ratings.csv")
 
 # clean data
-dat$highest_mal_rating <- as.double(dat$highest_mal_rating)
+dat$mal_rating <- as.double(dat$mal_rating)
 dat <- dat[complete.cases(dat), ]
 dat$anime_name <- gsub(" \\*", "", dat$anime_name)
 
@@ -22,8 +22,8 @@ ggplot(chrono_data, aes(x = Ratings, fill = Source)) +
 
 # histogram of my and MyAnimeList ratings
 ratings_data <- data.frame(Source = c(rep("My Ratings", length(dat$rating)), 
-                                      rep("MAL Ratings", length(dat$highest_mal_rating))),
-                           Ratings = c(dat$rating, dat$highest_mal_rating))
+                                      rep("MAL Ratings", length(dat$mal_rating))),
+                           Ratings = c(dat$rating, dat$mal_rating))
 # create overlapped density plots
 ggplot(ratings_data, aes(x = Ratings, fill = Source)) +
   geom_density(alpha = 0.4) +
