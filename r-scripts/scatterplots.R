@@ -1,12 +1,14 @@
 # packages and data import
 library(ggplot2)
-library(estimatr)
-dat <- read.csv("C:/Users/kathi/Downloads/anime_ratings.csv")
+library(googlesheets4)
 
-# clean data
-dat$mal_rating <- as.double(dat$mal_rating)
-dat <- dat[complete.cases(dat), ]
-dat$anime_name <- gsub(" \\*", "", dat$anime_name)
+
+# Authenticate with Google Sheets using JSON credentials and import data
+gs4_auth(path = "C:\\Users\\kathi\\Downloads\\credentials.json")
+dat <- read_sheet(paste("https://docs.google.com/spreadsheets/d/1MCPi0GCz_",
+                  "YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA/edit#gid=618528452"),
+                  range = ".csv Anime List Mirror")
+dat <- as.data.frame(dat)
 
 
 # scatter plot of MAL ratings vs my ratings
