@@ -13,7 +13,7 @@ dotenv.load_dotenv()
 # connect to Google Sheets
 scope = ['https://spreadsheets.google.com/feeds',
          'https://www.googleapis.com/auth/drive']
-creds = ServiceAccountCredentials.from_json_keyfile_name('./credentials.json', scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name('../credentials.json', scope)
 client = gspread.authorize(creds)
 
 # accessing relevant tab in sheet
