@@ -20,63 +20,69 @@ client = gspread.authorize(creds)
 sheet_key = os.getenv('SHEET_KEY')
 sheet = client.open_by_key(sheet_key).worksheet('Anime List (Statistics Version)')
 
-# function to get the score of the anime with given id
-def get_mal_rating(anime_id, mal_auth):
-    base_url = "https://api.myanimelist.net/v2/anime"
-    response = requests.get(f'{base_url}/{anime_id}?fields=,mean', 
-                            headers=mal_auth).json()
-    return response['mean']
+# MAL auth
+mal_client_id = os.getenv('MAL_CLIENT_ID')
+mal_auth = {'X-MAL-CLIENT-ID' : mal_client_id}
 
+# arrays for use, cmp, and update
 urls = [url for url in sheet.col_values(12)[1:]]
 old_scores = [float(n) for n in sheet.col_values(8)[1:]]
 new_scores = [[]]
 anime_names = sheet.col_values(3)[1:]
 updates = []
+score_map = {}
 
-## OLD METHOD, GETS RATE LIMITED
 
+# function to get the score of the anime with given id
+def get_mal_rating(anime_id):
+    base_url = "https://api.myanimelist.net/v2/anime"
+    response = requests.get(f'{base_url}/{anime_id}?fields=,mean', 
+                            headers=mal_auth).json()
+    return response['mean']
+
+
+# initial MAL API call
+url = "https://api.myanimelist.net/v2/users/Uji_Gintoki_Bowl/animelist?fields=,mean"
+payload = {'limit': 500,
+           'offset': 0,
+           'fields': 'id, mean'}
+response = requests.get(url, headers=mal_auth, params=payload).json()
+
+# populate score_map to cache scores and avoid 100s of calls
+while True:
+    
+    for obj in response['data']:
+        entry = obj['node']
+        id = str(entry['id'])
+        score = entry.get('mean', 'NA')
+        score_map[id] = score
+    
+    if 'next' not in response['paging']:
+        break
+    response = requests.get(response['paging']['next'], headers=mal_auth).json()
+    
+    
+# make new_scores
 for i, url in enumerate(urls):
     
     id = re.search(r'/anime/(\d+)/?', url).group(1)
-    mal_client_id = os.getenv('MAL_CLIENT_ID')
-    mal_auth = {'X-MAL-CLIENT-ID' : mal_client_id}
-    
-    new_score = get_mal_rating(id, mal_auth)
+    new_score = get_mal_rating(id) if id not in score_map else score_map[id]
+    new_scores[0].append(new_score)
     old_score = old_scores[i]
-    sheet.update_cell(i + 2, 8, new_score)
-    anime_name = anime_names[i]
     
-    sp = 80 - len(anime_name)
-    if float(old_score) != new_score:
-        print(f"{anime_name}: {' ' * sp} {old_score} -> {new_score}")
-    else:
-        print(f"{anime_name}: {' ' * sp} no updates")
-    
-    sleep(0.5)
-    
-    
-    
-### ALT METHOD, STILL RATE LIMITED 
+    if (old_score != new_score):
+        anime_name = anime_names[i]
+        sp = 80 - len(anime_name)
+        updates.append(f"{anime_name}: {' ' * sp} {old_score} -> {new_score}")
 
-# for i, url in enumerate(urls):
-    
-#     id = re.search(r'/anime/(\d+)/?', url).group(1)
-#     mal_client_id = os.getenv('MAL_CLIENT_ID')
-#     mal_auth = {'X-MAL-CLIENT-ID' : mal_client_id}
-    
-#     new_score = get_mal_rating(id, mal_auth)
-#     new_scores[0].append(new_score)    
-#     old_score = old_scores[i]
-#     if (old_score != new_score):
-#         anime_name = anime_names[i]
-#         sp = 80 - len(anime_name)
-#         updates.append(f"{anime_name}: {' ' * sp} {old_score} -> {new_score}")
-#         print(updates[-1])
-    
-#     if not i % 10:
-#         print(f"{int(i / len(old_scores) * 100)}% done")
+# print updates
+for i, msg in enumerate(updates):
+    if i == 0:
+        print("\nUPDATES:\n")
+    print(msg)
 
-# print("ready?")
-# sleep(10)
-# sheet.update('H2:H', new_scores)
-# print("done!")
+# sync to MAL rating column in sheet
+mal_rating_column = sheet.range(f'H2:H{2 + len(new_scores[0]) - 1}')
+for i, cell in enumerate(mal_rating_column):
+    cell.value = new_scores[0][i]
+sheet.update_cells(mal_rating_column)
