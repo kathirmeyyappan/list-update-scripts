@@ -27,7 +27,7 @@ mal_auth = {'X-MAL-CLIENT-ID' : mal_client_id}
 # arrays for use, cmp, and update
 urls = [url for url in sheet.col_values(12)[1:]]
 old_scores = [float(n) for n in sheet.col_values(8)[1:]]
-new_scores = [[]]
+new_scores = []
 anime_names = sheet.col_values(3)[1:]
 updates = []
 score_map = {}
@@ -67,7 +67,7 @@ for i, url in enumerate(urls):
     
     id = re.search(r'/anime/(\d+)/?', url).group(1)
     new_score = get_mal_rating(id) if id not in score_map else score_map[id]
-    new_scores[0].append(new_score)
+    new_scores.append(new_score)
     old_score = old_scores[i]
     
     if (old_score != new_score):
@@ -76,13 +76,15 @@ for i, url in enumerate(urls):
         updates.append(f"{anime_name}: {' ' * sp} {old_score} -> {new_score}")
 
 # print updates
+if not updates:
+    print("\nNO UPDATES\n")
 for i, msg in enumerate(updates):
     if i == 0:
         print("\nUPDATES:\n")
     print(msg)
 
 # sync to MAL rating column in sheet
-mal_rating_column = sheet.range(f'H2:H{2 + len(new_scores[0]) - 1}')
+mal_rating_column = sheet.range(f'H2:H{2 + len(new_scores) - 1}')
 for i, cell in enumerate(mal_rating_column):
-    cell.value = new_scores[0][i]
+    cell.value = new_scores[i]
 sheet.update_cells(mal_rating_column)
