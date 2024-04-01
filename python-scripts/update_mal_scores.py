@@ -26,10 +26,8 @@ mal_auth = {'X-MAL-CLIENT-ID' : mal_client_id}
 
 # arrays for use, cmp, and update
 urls = [url for url in sheet.col_values(13)[1:]]
-print(urls)
 old_scores = [0 if not n else float(n) for n in sheet.col_values(8)[1:]]
-print(old_scores)
-new_scores = [[]]
+new_scores = []
 anime_names = sheet.col_values(3)[1:]
 updates = []
 score_map = {}
