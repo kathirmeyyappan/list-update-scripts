@@ -1,3 +1,4 @@
+colorama
 gspread
 oauth2client
 requests

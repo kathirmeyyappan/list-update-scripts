@@ -7,6 +7,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import requests
 import re
 from time import sleep
+from colorama import Fore, Style
 
 dotenv.load_dotenv()
 
@@ -72,16 +73,20 @@ for i, url in enumerate(urls):
     
     if (old_score != new_score):
         anime_name = anime_names[i]
-        sp = 80 - len(anime_name)
-        updates.append(f"{anime_name}: {' ' * sp} {old_score} -> {new_score}")
+        updates.append((anime_name, old_score, new_score))
 
 # print updates
 if not updates:
-    print("\nNO UPDATES\n")
-for i, msg in enumerate(updates):
+    print("\nNO UPDATES")
+for i, update in enumerate(updates):
     if i == 0:
         print("\nUPDATES:\n")
-    print(msg)
+    anime_name, old_score, new_score = update
+    sp = max(80 - len(anime_name), 0)
+    color = Fore.GREEN if new_score > old_score else Fore.RED
+    print(color + f"{anime_name}{' ' * sp} {old_score} -> {new_score}" + \
+          Style.RESET_ALL)
+print()
 
 # sync to MAL rating column in sheet
 mal_rating_column = sheet.range(f'H2:H{2 + len(new_scores) - 1}')
