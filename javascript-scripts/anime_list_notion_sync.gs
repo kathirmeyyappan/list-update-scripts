@@ -13,7 +13,7 @@ let imageCache = {};
 function populateImageCache() {
   const baseUrl = "https://api.myanimelist.net/v2/users/Uji_Gintoki_Bowl/animelist";
   const headers = { "X-MAL-CLIENT-ID": MAL_CLIENT_ID }; 
-  let nextUrl = `${baseUrl}?fields=id,mean,main_picture&limit=500&offset=0`;
+  let nextUrl = `${baseUrl}?fields=id,mean,main_picture&nsfw=true&limit=500&offset=0`;
 
   while (nextUrl) {
     const response = UrlFetchApp.fetch(nextUrl, { headers });
@@ -23,7 +23,11 @@ function populateImageCache() {
       const entry = obj.node;
       imageCache[entry.id] = {
         mean: entry.mean || "NA",
-        image: entry.main_picture ? entry.main_picture.large : null
+        image: entry.main_picture ? (
+          entry.main_picture.large ? entry.main_picture.large : (
+            entry.main_picture.medium ? entry.main_picture.medium : null
+          )
+        ) : null
       };
     });
 
@@ -78,7 +82,6 @@ function syncToNotion() {
     const releaseYear = row[5];              // col F, Year First Released
     const malScore    = row[6];              // col G, MAL Rating
     const notes       = row[13];             // col N, Notes
-    console.log(notes)
     
     // icon for row
     const url = row[12]; // col M, URL
@@ -86,7 +89,7 @@ function syncToNotion() {
     let img_url = "";
     if (match) {
       const mal_id = match[1];
-      img_url = imageCache[mal_id].image
+      img_url = imageCache[mal_id].image;
     } else {
       console.warn("No anime ID found in URL:", url);
     }
