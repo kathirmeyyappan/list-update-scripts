@@ -1,7 +1,8 @@
 # life's work update scripts
-The (live) .csv formatted sheet which the scripts use can be found [here](https://docs.google.com/spreadsheets/d/1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA/edit#gid=618528452).
 
-This is the tab from which statistics are pulled, and which the python script updates: [link](https://docs.google.com/spreadsheets/d/1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA/edit#gid=1243461176).
+This is a collection of scripts that pertain to my anime spreadsheet, [life's work](https://docs.google.com/spreadsheets/d/1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA/edit?gid=1243461176#gid=1243461176).
+
+The (live) .csv formatted sheet which the R scripts use can be found [here](https://docs.google.com/spreadsheets/d/1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA/edit#gid=618528452).
 
 Below are some cool visuals of the imported data (generated with R):
 
