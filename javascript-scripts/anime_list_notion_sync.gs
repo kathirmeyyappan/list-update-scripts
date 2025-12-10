@@ -87,7 +87,6 @@ function syncToNotion(startRow, endRow) {
     const releaseYear = row[5];              // col F
     const malScore    = row[6];              // col G
     const caughtUp    = row[7];              // col H
-    console.log(typeof(caughtUp))
     const malUrl      = row[12];             // col M
     const notes       = row[13];             // col N
     
