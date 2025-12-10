@@ -38,7 +38,7 @@ function populateImageCache() {
 }
 
 
-// utility to split text into smaller blocks (to avoid Notion API length limits)
+// utility to paginate text into smaller blocks (to avoid Notion API length limits)
 function splitTextIntoParagraphs(text, chunkSize = 1800) {
   const paragraphs = text.split(/\n+/); // split by line breaks
   const blocks = [];
@@ -86,6 +86,9 @@ function syncToNotion(startRow, endRow) {
     const watchYear   = row[4];              // col E
     const releaseYear = row[5];              // col F
     const malScore    = row[6];              // col G
+    const caughtUp    = row[7];              // col H
+    console.log(typeof(caughtUp))
+    const malUrl      = row[12];             // col M
     const notes       = row[13];             // col N
     
     const url = row[12]; // col M, URL
@@ -104,11 +107,16 @@ function syncToNotion(startRow, endRow) {
       parent: { data_source_id: DATA_SOURCE_ID },
       properties: {
         "Title":            { title: [{ text: { content: animeName }}]}, 
-        "True Given Score": { number: trueScore },       
+        "Given Score": { number: trueScore },       
         "Score Out of 100": { number: score },           
         "Watch Year":       { number: watchYear },       
         "Release Year":     { number: releaseYear },
-        "MAL Score":        { number: malScore }
+        "MAL Score":        { number: malScore },
+        "Caught up?":       { "select": {
+                                  "name": caughtUp ? "Yes" : "No"
+                                }
+                            },
+        "MAL Link":         { "url" : malUrl },
       },
       icon: { type:"external", external: { url: img_url }},
       cover: { type:"external", external: { url: img_url }},
