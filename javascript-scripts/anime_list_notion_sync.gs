@@ -6,14 +6,14 @@ const DATA_SOURCE_ID = PropertiesService.getScriptProperties().getProperty("DATA
 const MAL_CLIENT_ID  = PropertiesService.getScriptProperties().getProperty("MAL_CLIENT_ID");
 
 // cache where image urls for Notion view will be 
-let imageCache = {};
+let malCache = {};
 
 
-// preloads all of the image urls for sending to Notion as covers
-function populateImageCache() {
+// preloads all of the image urls, MAL desc, etc. for each entry so that we don't have to hit MAL so many times as we send to Notion
+function populateMALCache() {
   const baseUrl = "https://api.myanimelist.net/v2/users/Uji_Gintoki_Bowl/animelist";
   const headers = { "X-MAL-CLIENT-ID": MAL_CLIENT_ID }; 
-  let nextUrl = `${baseUrl}?fields=id,mean,main_picture&nsfw=true&limit=500&offset=0`;
+  let nextUrl = `${baseUrl}?fields=id,title,synopsis,mean,main_picture&nsfw=true&limit=500&offset=0`;
 
   while (nextUrl) {
     const response = UrlFetchApp.fetch(nextUrl, { headers });
@@ -21,20 +21,22 @@ function populateImageCache() {
 
     data.data.forEach(obj => {
       const entry = obj.node;
-      imageCache[entry.id] = {
+      malCache[entry.id] = {
         mean: entry.mean || "NA",
         image: entry.main_picture ? (
           entry.main_picture.large ? entry.main_picture.large : (
             entry.main_picture.medium ? entry.main_picture.medium : null
           )
-        ) : null
+        ) : null,
+        malTitle: entry.title,
+        synopsis: entry.synopsis
       };
     });
 
     nextUrl = data.paging && data.paging.next ? data.paging.next : null;
   }
 
-  console.log(`Image cache populated with ${Object.keys(imageCache).length} entries`);
+  console.log(`MAL cache populated with ${Object.keys(malCache).length} entries`);
 }
 
 
@@ -85,7 +87,7 @@ function syncToNotion(startRow, endRow) {
     const score       = Math.round(row[3] * 10);
     const watchYear   = row[4];              // col E
     const releaseYear = row[5];              // col F
-    const malScore    = row[6];              // col G
+    // const malScore    = row[6];              // col G SHOULD GET THIS FROM MAL
     const caughtUp    = row[7];              // col H
     const malUrl      = row[12];             // col M
     const notes       = row[13];             // col N
@@ -94,8 +96,17 @@ function syncToNotion(startRow, endRow) {
     const match = url.match(/\/anime\/(\d+)\/?/);
     let img_url = "";
     if (match) {
-      const mal_id = match[1];
-      img_url = imageCache[mal_id] ? imageCache[mal_id].image : "";
+        const mal_id = match[1];
+        if (malCache[mal_id]) {
+          // image from MAL
+          const imgObj = malCache[mal_id];
+          img_url = imgObj?.image ?? "";
+          // synopsis text
+          const synopsis = malCache[mal_id].synopsis ?? "";
+          malSynopsisBlocks = splitTextIntoParagraphs(synopsis);
+          // mean score
+          malScore = malCache[mal_id].mean ?? "";
+        }
     } else {
       console.warn("No anime ID found in URL:", url);
     }
@@ -116,10 +127,53 @@ function syncToNotion(startRow, endRow) {
                                 }
                             },
         "MAL Link":         { "url" : malUrl },
+        "Cover":            { "files": [
+                                {
+                                  "name": "cover.jpg",
+                                  "external": { "url": img_url }
+                                }
+                              ]
+                            }
       },
       icon: { type:"external", external: { url: img_url }},
-      cover: { type:"external", external: { url: img_url }},
-      children: paragraphBlocks
+      // cover: { type:"external", external: { url: img_url }},
+      children: [
+        // {
+        //   object: "block",
+        //   type: "image",
+        //   image: {
+        //     type: "external",
+        //     external: {
+        //       url: img_url // MAL large picture
+        //     }
+        //   }
+        // },
+        // --- heading for my notes ---
+        {
+          object: "block",
+          type: "heading_2",
+          heading_2: {
+            rich_text: [
+              { type: "text", text: { content: "My Comments" }}
+            ]
+          }
+        },
+
+        ...paragraphBlocks,   // sheet review chunks
+
+        // --- heading for MAL synopsis ---
+        {
+          object: "block",
+          type: "heading_2",
+          heading_2: {
+            rich_text: [
+              { type: "text", text: { content: "MAL Synopsis" }}
+            ]
+          }
+        },
+
+        ...malSynopsisBlocks  // MAL synopsis chunks
+      ],
     };
 
     UrlFetchApp.fetch("https://api.notion.com/v1/pages", {
@@ -138,7 +192,7 @@ function syncToNotion(startRow, endRow) {
 
 // do all sync tasks e2e
 function runFullSync() {
-  populateImageCache();
+  populateMALCache();
   syncToNotion(); // defaults to all rows
 }
 
@@ -160,7 +214,7 @@ function runPartialSyncUI() {
     return;
   }
 
-  populateImageCache();
+  populateMALCache();
   syncToNotion(startRow, endRow);
 }
 
