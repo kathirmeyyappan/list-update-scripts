@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'spreadsheet-notion-sync/cloudflare/**'
+  workflow_dispatch:
 
 jobs:
   deploy:
