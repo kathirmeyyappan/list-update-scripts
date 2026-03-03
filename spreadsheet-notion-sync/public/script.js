@@ -1,7 +1,7 @@
 import { clearNotionDatabase, syncToNotion, clearAndSync } from './notionSync.js';
 
 const STORAGE_KEY = 'notion_sync_config';
-const REQUIRED = ['SHEET_KEY', 'GOOGLE_API_KEY', 'MAL_CLIENT_ID', 'NOTION_TOKEN', 'DATA_SOURCE_ID', 'NOTION_DATABASE_ID'];
+const REQUIRED = ['WORKER_URL', 'PASSWORD'];
 
 // --- Config (localStorage) ---
 
@@ -42,24 +42,19 @@ const btnSaveCfg   = document.getElementById('btn-save-config');
 const cfgWarning   = document.getElementById('cfg-warning');
 
 const FIELDS = [
-  { id: 'cfg-sheet-key',       key: 'SHEET_KEY',          label: 'Sheet Key',          type: 'text',     required: true },
-  { id: 'cfg-sheet-tab',       key: 'SHEET_TAB_NAME',     label: 'Sheet Tab Name',     type: 'text',     required: false },
-  { id: 'cfg-google-api-key',  key: 'GOOGLE_API_KEY',     label: 'Google API Key',     type: 'password', required: true },
-  { id: 'cfg-mal-client-id',   key: 'MAL_CLIENT_ID',      label: 'MAL Client ID',      type: 'password', required: true },
-  { id: 'cfg-mal-username',    key: 'MAL_USER_NAME',      label: 'MAL Username',       type: 'text',     required: false },
-  { id: 'cfg-notion-token',    key: 'NOTION_TOKEN',       label: 'Notion Token',       type: 'password', required: true },
-  { id: 'cfg-data-source-id',  key: 'DATA_SOURCE_ID',     label: 'Data Source ID',     type: 'text',     required: true },
-  { id: 'cfg-notion-db-id',    key: 'NOTION_DATABASE_ID', label: 'Notion Database ID', type: 'text',     required: true },
+  { id: 'cfg-worker-url', key: 'WORKER_URL', label: 'Worker URL', type: 'text',     required: true },
+  { id: 'cfg-password',   key: 'PASSWORD',   label: 'Password',   type: 'password', required: true },
 ];
 
 // --- Settings panel ---
 
+// Non-sensitive values that never need to be entered via the UI.
 const DEFAULTS = {
-  SHEET_KEY:         '1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA',
-  SHEET_TAB_NAME:    'Anime List (Statistics Version)',
-  MAL_USER_NAME:     'Uji_Gintoki_Bowl',
-  DATA_SOURCE_ID:    '2699871c-d3ff-80f1-b7be-000b2a3f8baf',
-  NOTION_DATABASE_ID:'2699871cd3ff80228eb5ca320b444d7e',
+  SHEET_KEY:          '1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA',
+  SHEET_TAB_NAME:     'Anime List (Statistics Version)',
+  MAL_USER_NAME:      'Uji_Gintoki_Bowl',
+  DATA_SOURCE_ID:     '2699871c-d3ff-80f1-b7be-000b2a3f8baf',
+  NOTION_DATABASE_ID: '2699871cd3ff80228eb5ca320b444d7e',
 };
 
 function populateFields() {

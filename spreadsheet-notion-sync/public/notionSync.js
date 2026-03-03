@@ -1,12 +1,28 @@
 // Anime → Notion sync utilities.
-// Pure browser-compatible JS — no Node dependencies, no build step.
 //
-// All exported functions accept a config object as their first argument:
-// {
-//   SHEET_KEY, SHEET_TAB_NAME, GOOGLE_API_KEY,
-//   MAL_CLIENT_ID, MAL_USER_NAME,
-//   NOTION_TOKEN, DATA_SOURCE_ID, NOTION_DATABASE_ID
-// }
+// Browser mode (via Cloudflare Worker):
+//   config = { WORKER_URL, PASSWORD, DATA_SOURCE_ID, NOTION_DATABASE_ID, SHEET_KEY, ... }
+//   All API secrets live in the worker as env vars.
+//
+// CLI mode (direct, no worker):
+//   config = { NOTION_TOKEN, GOOGLE_API_KEY, MAL_CLIENT_ID, SHEET_KEY, ... }
+
+// Route a fetch through the Cloudflare worker (if configured) or call directly.
+function apiFetch(url, options = {}, config = {}) {
+  if (!config.WORKER_URL) return fetch(url, options);
+
+  const workerUrl = url
+    .replace(/^https:\/\/api\.notion\.com\/v1/, config.WORKER_URL.replace(/\/$/, '') + '/notion')
+    .replace(/^https:\/\/sheets\.googleapis\.com/, config.WORKER_URL.replace(/\/$/, '') + '/sheets')
+    .replace(/^https:\/\/api\.myanimelist\.net/, config.WORKER_URL.replace(/\/$/, '') + '/mal')
+    .replace(/[?&]key=[^&]+/, ''); // strip Google API key — worker injects its own
+
+  const headers = { ...(options.headers || {}), 'X-Auth': config.PASSWORD };
+  delete headers['Authorization'];
+  delete headers['X-MAL-CLIENT-ID'];
+
+  return fetch(workerUrl, { ...options, headers });
+}
 
 export function splitTextIntoParagraphs(text = '', chunkSize = 1800) {
   const paragraphs = text.split(/\n+/);
@@ -41,11 +57,11 @@ export async function populateMalCache(config) {
   const { MAL_CLIENT_ID, MAL_USER_NAME = 'Uji_Gintoki_Bowl' } = config;
   const malCache = {};
   const baseUrl = `https://api.myanimelist.net/v2/users/${encodeURIComponent(MAL_USER_NAME)}/animelist`;
-  const headers = { 'X-MAL-CLIENT-ID': MAL_CLIENT_ID };
+  const headers = config.WORKER_URL ? {} : { 'X-MAL-CLIENT-ID': MAL_CLIENT_ID };
   let nextUrl = `${baseUrl}?fields=id,title,synopsis,mean,main_picture&nsfw=true&limit=500&offset=0`;
 
   while (nextUrl) {
-    const res = await fetch(nextUrl, { headers });
+    const res = await apiFetch(nextUrl, { headers }, config);
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`MAL request failed (${res.status}): ${text.slice(0, 500)}`);
@@ -79,9 +95,10 @@ async function getSheetData(config) {
   } = config;
 
   const range = encodeURIComponent(`${SHEET_TAB_NAME}!A2:N`);
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_KEY}/values/${range}?key=${GOOGLE_API_KEY}`;
+  const base = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_KEY}/values/${range}`;
+  const url = config.WORKER_URL ? base : `${base}?key=${GOOGLE_API_KEY}`;
 
-  const res = await fetch(url);
+  const res = await apiFetch(url, {}, config);
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Failed to read sheet (${res.status}): ${text.slice(0, 300)}`);
@@ -91,19 +108,22 @@ async function getSheetData(config) {
   return data.values ?? [];
 }
 
-function notionHeaders(token) {
-  return {
-    Authorization: `Bearer ${token}`,
+function notionHeaders(config) {
+  const h = {
     'Notion-Version': '2022-06-28',
     'Content-Type': 'application/json',
     accept: 'application/json',
   };
+  if (!config.WORKER_URL && config.NOTION_TOKEN) {
+    h.Authorization = `Bearer ${config.NOTION_TOKEN}`;
+  }
+  return h;
 }
 
 export async function clearNotionDatabase(config) {
-  const { NOTION_TOKEN, NOTION_DATABASE_ID } = config;
+  const { NOTION_DATABASE_ID } = config;
   const compactDbId = (NOTION_DATABASE_ID || '').trim().replace(/-/g, '');
-  const headers = notionHeaders(NOTION_TOKEN);
+  const headers = notionHeaders(config);
 
   console.log('Collecting pages to archive...');
 
@@ -116,11 +136,11 @@ export async function clearNotionDatabase(config) {
     const body = { page_size: 100, filter: { property: 'object', value: 'page' } };
     if (startCursor) body.start_cursor = startCursor;
 
-    const res = await fetch('https://api.notion.com/v1/search', {
+    const res = await apiFetch('https://api.notion.com/v1/search', {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
-    });
+    }, config);
 
     if (!res.ok) {
       const text = await res.text();
@@ -150,11 +170,11 @@ export async function clearNotionDatabase(config) {
 
   await Promise.all(
     pageIds.map(async (id) => {
-      const patchRes = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+      const patchRes = await apiFetch(`https://api.notion.com/v1/pages/${id}`, {
         method: 'PATCH',
         headers,
         body: JSON.stringify({ archived: true }),
-      });
+      }, config);
       done++;
       if (!patchRes.ok) {
         const text = await patchRes.text();
@@ -168,14 +188,9 @@ export async function clearNotionDatabase(config) {
 }
 
 export async function syncToNotion(config) {
-  const {
-    NOTION_TOKEN,
-    DATA_SOURCE_ID,
-    NOTION_DATA_SOURCE_ID,
-  } = config;
-
+  const { DATA_SOURCE_ID, NOTION_DATA_SOURCE_ID } = config;
   const resolvedDataSourceId = NOTION_DATA_SOURCE_ID ?? DATA_SOURCE_ID;
-  const headers = notionHeaders(NOTION_TOKEN);
+  const headers = notionHeaders(config);
 
   let rows = await getSheetData(config);
   rows = rows.filter((row) => row[2] && row[2] !== '');
@@ -252,11 +267,11 @@ export async function syncToNotion(config) {
       ],
     };
 
-    const notionRes = await fetch('https://api.notion.com/v1/pages', {
+    const notionRes = await apiFetch('https://api.notion.com/v1/pages', {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
-    });
+    }, config);
 
     done++;
     if (!notionRes.ok) {
