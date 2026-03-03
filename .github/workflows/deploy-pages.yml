@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'spreadsheet-notion-sync/public/**'
+      - 'sync/public/**'
   workflow_dispatch:
 
 permissions:
@@ -27,6 +27,6 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: spreadsheet-notion-sync/public
+          path: sync/public
       - uses: actions/deploy-pages@v4
         id: deployment
