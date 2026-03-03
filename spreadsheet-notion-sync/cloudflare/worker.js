@@ -1,6 +1,10 @@
 /**
  * Cloudflare Worker — transparent CORS proxy for Notion, Google Sheets, and MAL.
  *
+ * IMPORTANT: This file is not auto-deployed. If you make changes here, paste the
+ * updated contents manually into the Cloudflare dashboard editor and redeploy.
+ * (Workers & Pages → anime-sync → Edit Code)
+ *
  * Required Worker env vars (set via Cloudflare dashboard → Settings → Variables):
  *   AUTH_PASSWORD    — password the browser sends in X-Auth header
  *   NOTION_TOKEN     — Notion integration token (ntn_...)
