@@ -9,7 +9,7 @@ import re
 from time import sleep
 from colorama import Fore, Style
 
-dotenv.load_dotenv()
+dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
 
 # connect to Google Sheets
 scope = ['https://spreadsheets.google.com/feeds',
