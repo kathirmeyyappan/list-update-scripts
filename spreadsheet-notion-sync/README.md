@@ -1,14 +1,10 @@
 # spreadsheet-notion-sync
 
-Syncs an anime tracking Google Sheet + MyAnimeList data into a Notion database. Runs as a local CLI or a static web app (hosted on GitHub Pages).
-
----
+Syncs an anime tracking Google Sheet + MyAnimeList data into a Notion database. Runs as a local CLI or a static web app, hosted on GitHub Pages and facilitated with Cloudflare workers for Notion POST requests.
 
 ## Screenshots
 
-<!-- add screenshots here -->
-
----
+<img width="665" height="404" alt="image" src="https://github.com/user-attachments/assets/8bfe7594-382e-437b-b113-afaab19508c4" />
 
 ## How it works
 
@@ -20,19 +16,11 @@ Data flows one way: **Google Sheets + MAL → Notion**.
 
 A full sync clears the Notion database first to avoid duplicates, then repopulates it from scratch.
 
----
-
 ## Web UI
 
 The web app is a static site (`public/`) that can be hosted anywhere — GitHub Pages, locally, etc.
 
 All sync logic runs in the browser. A Cloudflare Worker (`cloudflare/worker.js`) sits in front of the external APIs (Notion, Google Sheets, MAL) to handle CORS and inject API credentials, so no secrets are ever stored in the frontend.
-
-### First-time setup
-
-1. Open the site
-2. Click **⚙ Config** and enter the worker password (`AUTH_PASSWORD`)
-3. Click **Save Config** — this is stored in `localStorage` and autofills on future visits
 
 ### Buttons
 
@@ -49,7 +37,6 @@ Progress is shown as a bar above the status line while an operation is running.
 ```bash
 cd spreadsheet-notion-sync
 npx serve public
-# open http://localhost:3000
 ```
 
 ---
@@ -90,7 +77,6 @@ npm run cli
 # then type: clear / sync / clear-and-sync / exit
 ```
 
----
 
 ## Cloudflare Worker
 
