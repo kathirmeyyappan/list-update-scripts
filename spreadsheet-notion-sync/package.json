@@ -1,0 +1,13 @@
+{
+  "name": "list-update-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Utilities for syncing anime spreadsheet data with external services (MAL, Notion, etc.)",
+  "scripts": {
+    "cli": "node cli.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0"
+  }
+}
