@@ -2,6 +2,5 @@ credentials.json
 python-scripts/.env
 python-scripts/venv
 spreadsheet-notion-sync/.env
-spreadsheet-notion-sync/public/config.js
 spreadsheet-notion-sync/node_modules
 node_modules

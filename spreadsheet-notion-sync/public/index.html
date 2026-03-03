@@ -2,30 +2,19 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Anime → Notion Sync</title>
+    <title>Anime List → Notion Sync</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
       :root {
         color-scheme: dark;
-        --bg: #050816;
-        --bg-elevated: #0f172a;
         --accent: #38bdf8;
-        --accent-soft: rgba(56, 189, 248, 0.12);
-        --danger: #f97373;
-        --danger-soft: rgba(248, 113, 113, 0.12);
         --text: #e5e7eb;
         --muted: #9ca3af;
-        --border: rgba(148, 163, 184, 0.3);
-        --radius-lg: 18px;
-        --radius-pill: 999px;
-        --shadow-soft: 0 22px 45px rgba(15, 23, 42, 0.85);
-        --shadow-glow: 0 0 0 1px rgba(56, 189, 248, 0.18),
-          0 18px 40px rgba(15, 23, 42, 0.9);
+        --radius: 10px;
+        --shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
       }
 
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
 
       body {
         margin: 0;
@@ -34,207 +23,141 @@
         align-items: center;
         justify-content: center;
         padding: 32px 16px;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text',
-          sans-serif;
-        background: radial-gradient(circle at top, #0b1120 0, #020617 55%);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+        background: #050b18;
         color: var(--text);
       }
 
       .card {
         width: 100%;
-        max-width: 640px;
-        background: radial-gradient(circle at top left, #0b1120, #020617 80%);
-        border-radius: var(--radius-lg);
-        padding: 24px 24px 20px;
-        box-shadow: var(--shadow-soft);
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        position: relative;
-        overflow: hidden;
+        max-width: 580px;
+        background: #0d1526;
+        border-radius: var(--radius);
+        padding: 28px;
+        box-shadow: var(--shadow);
+        border: 1px solid rgba(148, 163, 184, 0.15);
       }
 
-      .card::before {
-        content: '';
-        position: absolute;
-        inset: -40%;
-        background:
-          radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.18), transparent 55%),
-          radial-gradient(circle at 100% 0, rgba(251, 113, 133, 0.15), transparent 50%);
-        opacity: 0.5;
-        pointer-events: none;
-        z-index: 0;
-      }
-
-      .card-inner {
-        position: relative;
-        z-index: 1;
-      }
-
+      /* Header */
       .header {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
         gap: 12px;
         margin-bottom: 20px;
       }
 
-      .title-group {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-
       .title {
-        font-size: 1.1rem;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
+        font-size: 1rem;
         font-weight: 600;
-        color: #e5e7eb;
+        color: var(--text);
+        letter-spacing: 0.02em;
       }
 
       .subtitle {
-        font-size: 0.85rem;
-        color: var(--muted);
-      }
-
-      .badge {
-        padding: 6px 12px;
-        border-radius: var(--radius-pill);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        border: 1px solid rgba(56, 189, 248, 0.5);
-        background: linear-gradient(
-          135deg,
-          rgba(15, 23, 42, 0.9),
-          rgba(15, 23, 42, 0.6)
-        );
-        color: var(--accent);
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .badge-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 999px;
-        background: radial-gradient(circle, #22c55e, #15803d);
-        box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.18);
-      }
-
-      .row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-bottom: 18px;
-      }
-
-      .pill {
-        padding: 6px 12px;
-        border-radius: var(--radius-pill);
-        border: 1px solid rgba(148, 163, 184, 0.45);
         font-size: 0.8rem;
         color: var(--muted);
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        backdrop-filter: blur(10px);
-        background: radial-gradient(
-          circle at top left,
-          rgba(15, 23, 42, 0.9),
-          rgba(15, 23, 42, 0.7)
-        );
+        margin-top: 3px;
       }
 
-      .pill-label {
+      /* Source / Target labels */
+      .meta {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+      }
+
+      .meta-item {
         font-size: 0.75rem;
+        color: var(--muted);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 6px;
+        padding: 4px 10px;
+        background: rgba(15, 23, 42, 0.5);
+      }
+
+      .meta-item span {
         text-transform: uppercase;
-        letter-spacing: 0.14em;
-        color: rgba(148, 163, 184, 0.95);
+        font-size: 0.68rem;
+        letter-spacing: 0.1em;
+        color: rgba(148, 163, 184, 0.6);
+        margin-right: 6px;
       }
 
-      .pill-sep {
-        opacity: 0.4;
-      }
-
+      /* Action buttons */
       .buttons {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
-        margin-bottom: 14px;
+        gap: 12px;
+        margin-bottom: 20px;
       }
 
       button {
-        border-radius: var(--radius-pill);
-        border: none;
-        font-size: 0.9rem;
+        border-radius: var(--radius);
+        border: 1px solid transparent;
+        font-size: 0.875rem;
         font-weight: 500;
-        padding: 9px 16px;
+        padding: 9px 18px;
         cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        transition:
-          transform 0.12s ease-out,
-          box-shadow 0.12s ease-out,
-          background 0.12s ease-out,
-          color 0.12s ease-out,
-          border-color 0.12s ease-out;
+        transition: opacity 0.1s, background 0.1s;
         white-space: nowrap;
       }
 
       button:disabled {
         cursor: wait;
-        opacity: 0.7;
-        transform: none;
-        box-shadow: none;
-      }
-
-      .btn-primary {
-        background: radial-gradient(circle at top, #38bdf8, #0ea5e9);
-        color: #0b1120;
-        box-shadow: 0 14px 35px rgba(56, 189, 248, 0.45);
-      }
-
-      .btn-primary:hover:not(:disabled) {
-        transform: translateY(-1px);
-        box-shadow: var(--shadow-glow);
+        opacity: 0.5;
       }
 
       .btn-danger {
-        background: radial-gradient(circle at top, #f97373, #fb7185);
-        color: #0b1120;
-        box-shadow: 0 14px 32px rgba(248, 113, 113, 0.45);
+        background: #7f1d1d;
+        color: #fecaca;
+        border-color: rgba(248, 113, 113, 0.4);
       }
 
       .btn-danger:hover:not(:disabled) {
-        transform: translateY(-1px);
-        box-shadow: 0 18px 40px rgba(248, 113, 113, 0.5);
+        background: #991b1b;
       }
 
-      .btn-soft {
-        background: rgba(15, 23, 42, 0.85);
-        color: var(--accent);
-        border: 1px solid rgba(56, 189, 248, 0.55);
+      .btn-primary {
+        background: #0c4a6e;
+        color: #bae6fd;
+        border-color: rgba(56, 189, 248, 0.35);
       }
 
-      .btn-soft:hover:not(:disabled) {
-        transform: translateY(-1px);
-        box-shadow: 0 10px 26px rgba(56, 189, 248, 0.35);
-        background: radial-gradient(circle at top, #0b1120, #020617);
+      .btn-primary:hover:not(:disabled) {
+        background: #075985;
       }
 
-      .btn-label-small {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.14em;
-        opacity: 0.85;
+      .btn-main {
+        background: #164e63;
+        color: #a5f3fc;
+        border-color: rgba(56, 189, 248, 0.4);
       }
 
+      .btn-main:hover:not(:disabled) {
+        background: #155e75;
+      }
+
+      /* Config button */
+      .btn-config {
+        background: transparent;
+        color: var(--muted);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        font-size: 0.78rem;
+        padding: 6px 12px;
+        border-radius: var(--radius);
+      }
+
+      .btn-config:hover {
+        color: var(--text);
+        border-color: rgba(148, 163, 184, 0.45);
+      }
+
+      /* Status */
       .status {
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px solid rgba(31, 41, 55, 0.9);
+        padding: 10px 0;
+        border-top: 1px solid rgba(148, 163, 184, 0.1);
         font-size: 0.8rem;
         color: var(--muted);
         display: flex;
@@ -243,104 +166,87 @@
         gap: 8px;
       }
 
-      .status-message {
-        white-space: pre-line;
-        max-width: 80%;
-      }
+      .status-message { flex: 1; }
 
       .status-tag {
-        border-radius: var(--radius-pill);
-        padding: 4px 10px;
-        font-size: 0.75rem;
-        border: 1px solid rgba(148, 163, 184, 0.5);
+        border-radius: 6px;
+        padding: 3px 9px;
+        font-size: 0.72rem;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        color: var(--muted);
+        white-space: nowrap;
       }
 
       .status-tag.ok {
-        border-color: rgba(34, 197, 94, 0.65);
-        color: #bbf7d0;
-        background: rgba(21, 128, 61, 0.18);
+        border-color: rgba(34, 197, 94, 0.5);
+        color: #86efac;
+        background: rgba(21, 128, 61, 0.15);
       }
 
       .status-tag.error {
-        border-color: rgba(248, 113, 113, 0.75);
-        color: #fecaca;
-        background: rgba(127, 29, 29, 0.3);
+        border-color: rgba(248, 113, 113, 0.5);
+        color: #fca5a5;
+        background: rgba(127, 29, 29, 0.2);
       }
 
+      /* Hint */
       .hint {
         margin-top: 10px;
-        font-size: 0.75rem;
-        color: var(--muted);
+        font-size: 0.72rem;
+        color: rgba(148, 163, 184, 0.5);
         display: flex;
-        justify-content: space-between;
-        gap: 10px;
-        opacity: 0.85;
+        flex-direction: column;
+        gap: 4px;
       }
 
       .hint code {
-        font-size: 0.72rem;
-        background: rgba(15, 23, 42, 0.9);
-        padding: 3px 7px;
-        border-radius: 999px;
-        border: 1px solid rgba(148, 163, 184, 0.4);
+        font-size: 0.7rem;
+        background: rgba(15, 23, 42, 0.8);
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
       }
 
-      .btn-config {
-        background: rgba(15, 23, 42, 0.6);
-        color: var(--muted);
-        border: 1px solid rgba(148, 163, 184, 0.3);
-        font-size: 0.78rem;
-        padding: 6px 12px;
-      }
-
-      .btn-config:hover {
-        color: var(--text);
-        border-color: rgba(148, 163, 184, 0.6);
-        background: rgba(15, 23, 42, 0.85);
-      }
-
+      /* Config panel */
       .config-panel {
-        margin-top: 14px;
-        padding-top: 14px;
-        border-top: 1px solid rgba(31, 41, 55, 0.9);
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(148, 163, 184, 0.1);
       }
 
       .cfg-warning {
         display: none;
         font-size: 0.78rem;
         color: #fca5a5;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
         padding: 6px 10px;
-        border-radius: 8px;
-        background: rgba(127, 29, 29, 0.25);
-        border: 1px solid rgba(248, 113, 113, 0.4);
+        border-radius: 6px;
+        background: rgba(127, 29, 29, 0.2);
+        border: 1px solid rgba(248, 113, 113, 0.3);
       }
 
       .cfg-grid {
         display: grid;
         grid-template-columns: auto 1fr;
-        gap: 8px 12px;
+        gap: 8px 14px;
         align-items: center;
-        margin-bottom: 12px;
+        margin-bottom: 14px;
       }
 
       .cfg-label {
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         color: var(--muted);
         white-space: nowrap;
       }
 
-      .cfg-label .req {
-        color: #f97373;
-        margin-left: 2px;
-      }
+      .cfg-label .req { color: #f87171; margin-left: 2px; }
 
       .cfg-input {
-        background: rgba(15, 23, 42, 0.8);
-        border: 1px solid rgba(148, 163, 184, 0.3);
-        border-radius: 8px;
+        background: rgba(5, 11, 24, 0.8);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 6px;
         color: var(--text);
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         padding: 5px 10px;
         width: 100%;
         outline: none;
@@ -348,147 +254,94 @@
       }
 
       .cfg-input:focus {
-        border-color: rgba(56, 189, 248, 0.6);
-        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.12);
+        border-color: rgba(56, 189, 248, 0.5);
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.08);
       }
 
       .btn-save-config {
-        background: rgba(56, 189, 248, 0.15);
+        background: rgba(56, 189, 248, 0.12);
         color: var(--accent);
-        border: 1px solid rgba(56, 189, 248, 0.4);
+        border: 1px solid rgba(56, 189, 248, 0.3);
         font-size: 0.82rem;
         padding: 7px 16px;
+        border-radius: var(--radius);
       }
 
       .btn-save-config:hover {
-        background: rgba(56, 189, 248, 0.25);
+        background: rgba(56, 189, 248, 0.2);
       }
 
-      @media (max-width: 600px) {
-        .cfg-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-        .card {
-          padding: 20px 18px 18px;
-        }
-
-        .header {
-          flex-direction: column;
-          align-items: flex-start;
-        }
-
-        .status {
-          flex-direction: column;
-          align-items: flex-start;
-        }
-
-        .status-message {
-          max-width: 100%;
-        }
-
-        .hint {
-          flex-direction: column;
-          align-items: flex-start;
-        }
+      @media (max-width: 520px) {
+        .card { padding: 20px; }
+        .header { flex-direction: column; }
+        .cfg-grid { grid-template-columns: 1fr; }
+        .hint { flex-direction: column; }
+        .status { flex-direction: column; align-items: flex-start; }
       }
     </style>
   </head>
   <body>
     <div class="card">
-      <div class="card-inner">
-        <div class="header">
-          <div class="title-group">
-            <div class="title">Anime → Notion Sync</div>
-            <div class="subtitle">
-              Drive the full clear + resync pipeline from a friendly control
-              panel.
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <div class="badge">
-              <span class="badge-dot"></span>
-              LIVE CONTROL
-            </div>
-            <button id="btn-config" class="btn-config">⚙ Config</button>
-          </div>
+      <div class="header">
+        <div>
+          <div class="title">life's work Spreadsheet → Notion Sync</div>
+          <div class="subtitle">Clear and sync the Notion database from the sheet.</div>
         </div>
+        <button id="btn-config" class="btn-config">⚙ Config</button>
+      </div>
 
-        <div class="row">
-          <div class="pill">
-            <span class="pill-label">Source</span>
-            <span class="pill-sep">•</span>
-            Google Sheets &nbsp; / &nbsp; MAL
-          </div>
-          <div class="pill">
-            <span class="pill-label">Target</span>
-            <span class="pill-sep">•</span>
-            Notion Database
-          </div>
+      <div class="meta">
+        <div class="meta-item"><span>Source</span>Google Sheets / MAL</div>
+        <div class="meta-item"><span>Target</span>Notion Database</div>
+      </div>
+
+      <div class="buttons">
+        <button id="btn-clear" class="btn-danger">Clear database</button>
+        <button id="btn-sync" class="btn-primary">Sync only</button>
+        <button id="btn-clear-sync" class="btn-main">Clear + Sync</button>
+      </div>
+
+      <div id="config-panel" class="config-panel" style="display:none;">
+        <div id="cfg-warning" class="cfg-warning"></div>
+        <div class="cfg-grid">
+          <label class="cfg-label" for="cfg-sheet-key">Sheet Key <span class="req">*</span></label>
+          <input class="cfg-input" id="cfg-sheet-key" type="text" placeholder="1MCPi0GCz_..." />
+
+          <label class="cfg-label" for="cfg-sheet-tab">Sheet Tab Name</label>
+          <input class="cfg-input" id="cfg-sheet-tab" type="text" placeholder="Anime List (Statistics Version)" />
+
+          <label class="cfg-label" for="cfg-google-api-key">Google API Key <span class="req">*</span></label>
+          <input class="cfg-input" id="cfg-google-api-key" type="password" placeholder="AIza..." />
+
+          <label class="cfg-label" for="cfg-mal-client-id">MAL Client ID <span class="req">*</span></label>
+          <input class="cfg-input" id="cfg-mal-client-id" type="password" placeholder="fcd6c31f..." />
+
+          <label class="cfg-label" for="cfg-mal-username">MAL Username</label>
+          <input class="cfg-input" id="cfg-mal-username" type="text" placeholder="Uji_Gintoki_Bowl" />
+
+          <label class="cfg-label" for="cfg-notion-token">Notion Token <span class="req">*</span></label>
+          <input class="cfg-input" id="cfg-notion-token" type="password" placeholder="ntn_..." />
+
+          <label class="cfg-label" for="cfg-data-source-id">Data Source ID <span class="req">*</span></label>
+          <input class="cfg-input" id="cfg-data-source-id" type="text" placeholder="2699871c-d3ff-..." />
+
+          <label class="cfg-label" for="cfg-notion-db-id">Notion Database ID <span class="req">*</span></label>
+          <input class="cfg-input" id="cfg-notion-db-id" type="text" placeholder="2699871c..." />
         </div>
+        <button id="btn-save-config" class="btn-save-config">Save Config</button>
+      </div>
 
-        <div class="buttons">
-          <button id="btn-clear" class="btn-danger">
-            <span class="btn-label-small">Danger</span>
-            <span>Clear database only</span>
-          </button>
+      <div class="status">
+        <div id="status-message" class="status-message">Waiting for action.</div>
+        <div id="status-tag" class="status-tag">Idle</div>
+      </div>
 
-          <button id="btn-sync" class="btn-primary">
-            <span class="btn-label-small">Safe</span>
-            <span>Sync only (no clear)</span>
-          </button>
-
-          <button id="btn-clear-sync" class="btn-soft">
-            <span class="btn-label-small">Recommended</span>
-            <span>Clear + Sync</span>
-          </button>
-        </div>
-
-        <div id="config-panel" class="config-panel" style="display:none;">
-          <div id="cfg-warning" class="cfg-warning"></div>
-          <div class="cfg-grid">
-            <label class="cfg-label" for="cfg-sheet-key">Sheet Key <span class="req">*</span></label>
-            <input class="cfg-input" id="cfg-sheet-key" type="text" placeholder="1MCPi0GCz_..." />
-
-            <label class="cfg-label" for="cfg-sheet-tab">Sheet Tab Name</label>
-            <input class="cfg-input" id="cfg-sheet-tab" type="text" placeholder="Anime List (Statistics Version)" />
-
-            <label class="cfg-label" for="cfg-google-api-key">Google API Key <span class="req">*</span></label>
-            <input class="cfg-input" id="cfg-google-api-key" type="password" placeholder="AIza..." />
-
-            <label class="cfg-label" for="cfg-mal-client-id">MAL Client ID <span class="req">*</span></label>
-            <input class="cfg-input" id="cfg-mal-client-id" type="password" placeholder="fcd6c31f..." />
-
-            <label class="cfg-label" for="cfg-mal-username">MAL Username</label>
-            <input class="cfg-input" id="cfg-mal-username" type="text" placeholder="Uji_Gintoki_Bowl" />
-
-            <label class="cfg-label" for="cfg-notion-token">Notion Token <span class="req">*</span></label>
-            <input class="cfg-input" id="cfg-notion-token" type="password" placeholder="ntn_..." />
-
-            <label class="cfg-label" for="cfg-data-source-id">Data Source ID <span class="req">*</span></label>
-            <input class="cfg-input" id="cfg-data-source-id" type="text" placeholder="2699871c-d3ff-..." />
-
-            <label class="cfg-label" for="cfg-notion-db-id">Notion Database ID <span class="req">*</span></label>
-            <input class="cfg-input" id="cfg-notion-db-id" type="text" placeholder="2699871c..." />
-          </div>
-          <button id="btn-save-config" class="btn-save-config">Save Config</button>
-        </div>
-
-        <div class="status">
-          <div id="status-message" class="status-message">
-            Waiting for action.
-          </div>
-          <div id="status-tag" class="status-tag">Idle</div>
-        </div>
-
-        <div class="hint">
-          <div>Config is stored in your browser's localStorage — never sent anywhere.</div>
-          <div>CLI: <code>npm run sync:cli</code></div>
-        </div>
+      <div class="hint">
+        <div>Config stored in browser localStorage — autofills after first save, never leaves this device.</div>
+        <div>Alternatively, run from terminal with env vars set: <code>npm run cli</code></div>
       </div>
     </div>
 
     <script type="module" src="script.js"></script>
   </body>
-  </html>
-
+</html>

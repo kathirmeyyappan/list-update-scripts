@@ -8,15 +8,29 @@ import readline from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
 import { clearNotionDatabase, syncToNotion, clearAndSync } from './public/notionSync.js';
 
+const DEFAULTS = {
+  SHEET_KEY:          '1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA',
+  SHEET_TAB_NAME:     'Anime List (Statistics Version)',
+  MAL_USER_NAME:      'Uji_Gintoki_Bowl',
+  DATA_SOURCE_ID:     '2699871c-d3ff-80f1-b7be-000b2a3f8baf',
+  NOTION_DATABASE_ID: '2699871cd3ff80228eb5ca320b444d7e',
+  // API keys aren't here - they're in .env
+};
+
 const CONFIG = {
-  SHEET_KEY:        process.env.SHEET_KEY,
-  SHEET_TAB_NAME:   process.env.SHEET_TAB_NAME,
-  GOOGLE_API_KEY:   process.env.GOOGLE_API_KEY,
-  MAL_CLIENT_ID:    process.env.MAL_CLIENT_ID,
-  MAL_USER_NAME:    process.env.MAL_USER_NAME,
-  NOTION_TOKEN:     process.env.NOTION_TOKEN,
-  DATA_SOURCE_ID:   process.env.DATA_SOURCE_ID,
-  NOTION_DATABASE_ID: process.env.NOTION_DATABASE_ID,
+  ...DEFAULTS,
+  ...Object.fromEntries(
+    Object.entries({
+      SHEET_KEY:          process.env.SHEET_KEY,
+      SHEET_TAB_NAME:     process.env.SHEET_TAB_NAME,
+      GOOGLE_API_KEY:     process.env.GOOGLE_API_KEY,
+      MAL_CLIENT_ID:      process.env.MAL_CLIENT_ID,
+      MAL_USER_NAME:      process.env.MAL_USER_NAME,
+      NOTION_TOKEN:       process.env.NOTION_TOKEN,
+      DATA_SOURCE_ID:     process.env.DATA_SOURCE_ID,
+      NOTION_DATABASE_ID: process.env.NOTION_DATABASE_ID,
+    }).filter(([, v]) => v)
+  ),
   onProgress: (done, total, label = 'Progress') => {
     process.stdout.write(`\r${label}: ${done}/${total}`);
     if (done === total) process.stdout.write('\n');

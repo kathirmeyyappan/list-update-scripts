@@ -21,8 +21,7 @@ function isConfigComplete() {
 
 function getConfig() {
   return {
-    SHEET_TAB_NAME: 'Anime List (Statistics Version)',
-    MAL_USER_NAME: 'Uji_Gintoki_Bowl',
+    ...DEFAULTS,
     ...loadConfig(),
     onProgress: (done, total, label = 'Progress') => {
       statusMessage.textContent = `${label}… ${done} / ${total}`;
@@ -55,11 +54,19 @@ const FIELDS = [
 
 // --- Settings panel ---
 
+const DEFAULTS = {
+  SHEET_KEY:         '1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA',
+  SHEET_TAB_NAME:    'Anime List (Statistics Version)',
+  MAL_USER_NAME:     'Uji_Gintoki_Bowl',
+  DATA_SOURCE_ID:    '2699871c-d3ff-80f1-b7be-000b2a3f8baf',
+  NOTION_DATABASE_ID:'2699871cd3ff80228eb5ca320b444d7e',
+};
+
 function populateFields() {
   const cfg = loadConfig();
   for (const { id, key } of FIELDS) {
     const el = document.getElementById(id);
-    if (el) el.value = cfg[key] || '';
+    if (el) el.value = cfg[key] || DEFAULTS[key] || '';
   }
 }
 
@@ -130,8 +137,3 @@ btnClearSync.addEventListener('click', () => callAction(clearAndSync, 'Clear + S
 // --- Init ---
 
 populateFields();
-if (!isConfigComplete()) {
-  toggleConfig(true);
-  cfgWarning.textContent = 'Fill in the required fields to get started.';
-  cfgWarning.style.display = 'block';
-}
