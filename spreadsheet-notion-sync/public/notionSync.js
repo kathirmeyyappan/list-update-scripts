@@ -198,7 +198,7 @@ export async function syncToNotion(config) {
     const malUrl      = row[12] ?? '';
     const notes       = row[13] ?? '';
 
-    const match = malUrl ? malUrl.match(/\/anime\/(\d+)\//) : null;
+    const match = malUrl ? malUrl.match(/\/anime\/(\d+)/) : null;
     let imgUrl = '';
     let malSynopsisBlocks = splitTextIntoParagraphs('');
     let malScore = null;
