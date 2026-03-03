@@ -20,7 +20,7 @@
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Auth',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Auth, Notion-Version, Authorization, accept',
 };
 
 function corsResponse(body, status, extraHeaders = {}) {
@@ -46,7 +46,8 @@ export default {
     const search = url.search;
 
     let upstreamUrl;
-    let upstreamHeaders = { 'Content-Type': 'application/json' };
+    /** @type {Record<string, string>} */
+    let upstreamHeaders = {};
 
     if (path.startsWith('/notion/')) {
       const notionPath = path.slice('/notion'.length);
