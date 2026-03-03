@@ -154,6 +154,27 @@
         border-color: rgba(148, 163, 184, 0.45);
       }
 
+      /* Progress bar */
+      .progress-wrap {
+        height: 3px;
+        background: rgba(148, 163, 184, 0.1);
+        border-radius: 999px;
+        margin-bottom: 10px;
+        overflow: hidden;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+
+      .progress-wrap.visible { opacity: 1; }
+
+      .progress-bar {
+        height: 100%;
+        width: 0%;
+        background: var(--accent);
+        border-radius: 999px;
+        transition: width 0.15s ease-out;
+      }
+
       /* Status */
       .status {
         padding: 10px 0;
@@ -304,13 +325,14 @@
       <div id="config-panel" class="config-panel" style="display:none;">
         <div id="cfg-warning" class="cfg-warning"></div>
           <div class="cfg-grid">
-            <label class="cfg-label" for="cfg-worker-url">Worker URL <span class="req">*</span></label>
-            <input class="cfg-input" id="cfg-worker-url" type="text" placeholder="https://your-worker.workers.dev" />
-
             <label class="cfg-label" for="cfg-password">Password <span class="req">*</span></label>
-            <input class="cfg-input" id="cfg-password" type="password" placeholder="your AUTH_PASSWORD" />
+            <input class="cfg-input" id="cfg-password" type="password" placeholder="AUTH_PASSWORD" />
           </div>
         <button id="btn-save-config" class="btn-save-config">Save Config</button>
+      </div>
+
+      <div id="progress-wrap" class="progress-wrap">
+        <div id="progress-bar" class="progress-bar"></div>
       </div>
 
       <div class="status">

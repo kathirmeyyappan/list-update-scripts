@@ -1,7 +1,7 @@
 import { clearNotionDatabase, syncToNotion, clearAndSync } from './notionSync.js';
 
 const STORAGE_KEY = 'notion_sync_config';
-const REQUIRED = ['WORKER_URL', 'PASSWORD'];
+const REQUIRED = ['PASSWORD'];
 
 // --- Config (localStorage) ---
 
@@ -19,37 +19,46 @@ function isConfigComplete() {
   return REQUIRED.every(k => cfg[k]);
 }
 
+function setProgress(done, total, label) {
+  progressWrap.classList.add('visible');
+  progressBar.style.width = `${(done / total) * 100}%`;
+  statusMessage.textContent = `${label}… ${done} / ${total}`;
+  if (done === total) {
+    setTimeout(() => progressWrap.classList.remove('visible'), 600);
+  }
+}
+
 function getConfig() {
   return {
     ...DEFAULTS,
     ...loadConfig(),
-    onProgress: (done, total, label = 'Progress') => {
-      statusMessage.textContent = `${label}… ${done} / ${total}`;
-    },
+    onProgress: (done, total, label = 'Progress') => setProgress(done, total, label),
   };
 }
 
 // --- DOM refs ---
 
-const btnClear     = document.getElementById('btn-clear');
-const btnSync      = document.getElementById('btn-sync');
-const btnClearSync = document.getElementById('btn-clear-sync');
-const btnConfig    = document.getElementById('btn-config');
+const btnClear      = document.getElementById('btn-clear');
+const btnSync       = document.getElementById('btn-sync');
+const btnClearSync  = document.getElementById('btn-clear-sync');
+const btnConfig     = document.getElementById('btn-config');
 const statusMessage = document.getElementById('status-message');
-const statusTag    = document.getElementById('status-tag');
-const configPanel  = document.getElementById('config-panel');
-const btnSaveCfg   = document.getElementById('btn-save-config');
-const cfgWarning   = document.getElementById('cfg-warning');
+const statusTag     = document.getElementById('status-tag');
+const configPanel   = document.getElementById('config-panel');
+const btnSaveCfg    = document.getElementById('btn-save-config');
+const cfgWarning    = document.getElementById('cfg-warning');
+const progressWrap  = document.getElementById('progress-wrap');
+const progressBar   = document.getElementById('progress-bar');
 
 const FIELDS = [
-  { id: 'cfg-worker-url', key: 'WORKER_URL', label: 'Worker URL', type: 'text',     required: true },
-  { id: 'cfg-password',   key: 'PASSWORD',   label: 'Password',   type: 'password', required: true },
+  { id: 'cfg-password', key: 'PASSWORD', label: 'Password', type: 'password', required: true },
 ];
 
 // --- Settings panel ---
 
 // Non-sensitive values that never need to be entered via the UI.
 const DEFAULTS = {
+  WORKER_URL:         'https://anime-sync.kathirmey.workers.dev',
   SHEET_KEY:          '1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA',
   SHEET_TAB_NAME:     'Anime List (Statistics Version)',
   MAL_USER_NAME:      'Uji_Gintoki_Bowl',

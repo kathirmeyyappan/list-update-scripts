@@ -32,7 +32,10 @@ const CONFIG = {
     }).filter(([, v]) => v)
   ),
   onProgress: (done, total, label = 'Progress') => {
-    process.stdout.write(`\r${label}: ${done}/${total}`);
+    const width = 28;
+    const filled = Math.round((done / total) * width);
+    const bar = '█'.repeat(filled) + '░'.repeat(width - filled);
+    process.stdout.write(`\r${label}: [${bar}] ${done}/${total}`);
     if (done === total) process.stdout.write('\n');
   },
 };
