@@ -1,6 +1,18 @@
 # life's work update scripts
 
-This is a collection of scripts that pertain to my anime spreadsheet, [life's work](https://docs.google.com/spreadsheets/d/1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA/edit?gid=1243461176#gid=1243461176).
+A collection of scripts for maintaining my anime tracking spreadsheet, [life's work](https://docs.google.com/spreadsheets/d/1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA/edit?gid=1243461176#gid=1243461176).
+
+## Directories
+
+**`sync/`** — Syncs the spreadsheet + MAL data into a Notion database. Runs as a CLI or a web app hosted at [kathirm.com/sync](https://kathirm.com/sync). See [`sync/README.md`](sync/README.md) for details.
+
+**`python-scripts/`** — Pulls updated MAL scores back into the spreadsheet.
+
+**`r-scripts/`** — Generates data visualizations from the spreadsheet (histograms, scatterplots).
+
+**`google-app-scripts/`** — Legacy Apps Script that predates the `sync/` tooling.
+
+---
 
 The (live) .csv formatted sheet which the R scripts use can be found [here](https://docs.google.com/spreadsheets/d/1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA/edit#gid=618528452).
 
