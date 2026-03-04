@@ -209,7 +209,7 @@ export async function syncToNotion(config) {
     const score       = row[3] !== undefined ? Math.round(Number(row[3]) * 10) : null;
     const watchYear   = row[4] !== undefined && row[4] !== '' ? Number(row[4]) : null;
     const releaseYear = row[5] !== undefined && row[5] !== '' ? Number(row[5]) : null;
-    const caughtUp    = Boolean(row[7]);
+    const caughtUp    = String(row[7] ?? '').toUpperCase() === 'TRUE';
     const malUrl      = row[12] ?? '';
     const notes       = row[13] ?? '';
 
