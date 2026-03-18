@@ -120,6 +120,185 @@ function notionHeaders(config) {
   return h;
 }
 
+async function fetchExistingPagesByMalId(config) {
+  const { NOTION_DATABASE_ID } = config;
+  const headers = notionHeaders(config);
+  const pagesByMalId = {};
+  const pagesWithoutMalId = new Set();
+
+  if (!NOTION_DATABASE_ID) {
+    console.warn('NOTION_DATABASE_ID is not set; existing pages cannot be indexed by MAL ID.');
+    return { pagesByMalId, pagesWithoutMalId };
+  }
+
+  let hasMore = true;
+  let startCursor;
+
+  while (hasMore) {
+    const body = {
+      page_size: 100,
+    };
+    if (startCursor) body.start_cursor = startCursor;
+
+    const res = await apiFetch(`https://api.notion.com/v1/databases/${NOTION_DATABASE_ID}/query`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    }, config);
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Failed to query anime database (${res.status}): ${text.slice(0, 500)}`);
+    }
+
+    // create id -> (pageId, syncHash) mapping from current Notion DB
+    const data = await res.json();
+    for (const page of data.results ?? []) {
+      const props = page.properties || {};
+      const idProp = props['ID'] ?? props['userDefined:ID'];
+      const syncHashProp = props['Sync Hash'];
+
+      const malId = idProp && typeof idProp.number === 'number'
+        ? idProp.number
+        : null;
+      const syncHashValue = Array.isArray(syncHashProp?.rich_text) && syncHashProp.rich_text[0]
+        ? syncHashProp.rich_text[0].plain_text ?? null
+        : null;
+
+      if (malId != null) {
+        const malIdKey = String(malId);
+        pagesByMalId[malIdKey] = {
+          pageId: page.id,
+          syncHash: syncHashValue,
+        };
+      } else {
+        pagesWithoutMalId.add(page.id);
+      }
+    }
+
+    hasMore = Boolean(data.has_more);
+    startCursor = data.next_cursor;
+  }
+
+  console.log(`Loaded ${Object.keys(pagesByMalId).length} existing pages with MAL ID from Notion.`);
+  return { pagesByMalId, pagesWithoutMalId };
+}
+
+// --- Notion helpers for MAL-aware upserts ---
+
+function extractMalIdFromUrl(malUrl) {
+  if (!malUrl) return null;
+  const match = malUrl.match(/\/anime\/(\d+)/);
+  if (!match) return null;
+  const idNum = Number(match[1]);
+  return Number.isFinite(idNum) ? idNum : null;
+}
+
+function buildRowKey(row) {
+  const malUrl = row[12] ?? '';
+  const malId = extractMalIdFromUrl(malUrl);
+  return { malId, malUrl };
+}
+
+function computeRowHash(payloadCore) {
+  const normalized = {
+    properties: payloadCore.properties,
+    children: payloadCore.children,
+    icon: payloadCore.icon ?? null,
+  };
+  const json = JSON.stringify(normalized);
+  let hash = 2166136261; // FNV-1a 32-bit offset basis
+  for (let i = 0; i < json.length; i++) {
+    hash ^= json.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+function buildRowPayload(row, malCache, config) {
+  const animeName   = String(row[2] ?? '');
+  const trueScore   = row[3] !== undefined ? Number(row[3]) : null;
+  const score       = row[3] !== undefined ? Math.round(Number(row[3]) * 10) : null;
+  const watchYear   = row[4] !== undefined && row[4] !== '' ? Number(row[4]) : null;
+  const releaseYear = row[5] !== undefined && row[5] !== '' ? Number(row[5]) : null;
+  const caughtUp    = String(row[7] ?? '').toUpperCase() === 'TRUE';
+  const malUrl      = row[12] ?? '';
+  const notes       = row[13] ?? '';
+
+  const key = buildRowKey(row);
+  const malId = key.malId;
+
+  let imgUrl = '';
+  let malSynopsisBlocks = splitTextIntoParagraphs('');
+  let malScore = null;
+
+  if (malId != null) {
+    const cached = malCache[String(malId)];
+    if (cached) {
+      imgUrl = cached.image ?? '';
+      malSynopsisBlocks = splitTextIntoParagraphs(cached.synopsis ?? '');
+      malScore = cached.mean !== undefined && cached.mean !== 'NA'
+        ? Number(cached.mean)
+        : null;
+    } else {
+      console.warn(`No MAL cache entry for id ${malId} (${animeName})`);
+    }
+  } else if (malUrl) {
+    console.warn(`No anime ID found in URL for "${animeName}": ${malUrl}`);
+  }
+
+  const paragraphBlocks = splitTextIntoParagraphs(notes);
+
+  const properties = {
+    Title:              { title: [{ text: { content: animeName } }] },
+    'Given Score':      { number: Number.isFinite(trueScore)   ? trueScore   : null },
+    'Score Out of 100': { number: Number.isFinite(score)        ? score        : null },
+    'Watch Year':       { number: Number.isFinite(watchYear)    ? watchYear    : null },
+    'Release Year':     { number: Number.isFinite(releaseYear)  ? releaseYear  : null },
+    'MAL Score':        { number: Number.isFinite(malScore)     ? malScore     : null },
+    'Caught up?':       { select: { name: caughtUp ? 'Yes' : 'No' } },
+    'MAL Link':         { url: malUrl || null },
+    Cover: {
+      files: imgUrl
+        ? [{ name: 'cover.jpg', external: { url: imgUrl } }]
+        : [],
+    },
+  };
+
+  const children = [
+    {
+      object: 'block', type: 'heading_2',
+      heading_2: { rich_text: [{ type: 'text', text: { content: 'My Comments' } }] },
+    },
+    ...paragraphBlocks,
+    {
+      object: 'block', type: 'heading_2',
+      heading_2: { rich_text: [{ type: 'text', text: { content: 'MAL Synopsis' } }] },
+    },
+    ...malSynopsisBlocks,
+  ];
+
+  const payloadCore = {
+    properties,
+    children,
+  };
+
+  if (imgUrl) {
+    payloadCore.icon = { type: 'external', external: { url: imgUrl } };
+  }
+
+  const hash = computeRowHash(payloadCore);
+
+  if (malId != null) {
+    payloadCore.properties['ID'] = { number: malId };
+  }
+  payloadCore.properties['Sync Hash'] = {
+    rich_text: [{ type: 'text', text: { content: hash } }],
+  };
+
+  return { payloadCore, key, hash };
+}
+
 export async function clearNotionDatabase(config) {
   const { NOTION_DATABASE_ID } = config;
   const compactDbId = (NOTION_DATABASE_ID || '').trim().replace(/-/g, '');
@@ -166,6 +345,17 @@ export async function clearNotionDatabase(config) {
   // Phase 2: fire all archive requests at once, tracking progress
   const total = pageIds.length;
   const onProgress = config.onProgress ?? null;
+  const onStats = config.onStats ?? null;
+  const stats = {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    archived: 0,
+    skipped: 0,
+    errors: 0,
+  };
+
+  if (onStats) onStats(stats);
   let done = 0;
 
   await Promise.all(
@@ -176,15 +366,78 @@ export async function clearNotionDatabase(config) {
         body: JSON.stringify({ archived: true }),
       }, config);
       done++;
-      if (!patchRes.ok) {
+      if (patchRes.ok) {
+        stats.archived++;
+      } else {
+        stats.errors++;
         const text = await patchRes.text();
         console.error(`Failed to archive ${id} (${patchRes.status}): ${text.slice(0, 300)}`);
       }
       if (onProgress) onProgress(done, total, 'Archiving');
+      if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
     })
   );
 
   console.log(`Done. Archived ${total} pages.`);
+}
+
+async function replacePageContent(pageId, children, config, stats) {
+  const headers = notionHeaders(config);
+
+  // Fetch existing children
+  let hasMore = true;
+  let startCursor;
+  const blockIds = [];
+
+  while (hasMore) {
+    const url = new URL(`https://api.notion.com/v1/blocks/${pageId}/children`);
+    if (startCursor) url.searchParams.set('start_cursor', startCursor);
+    url.searchParams.set('page_size', '100');
+
+    const res = await apiFetch(url.toString(), { headers }, config);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Failed to fetch children for page ${pageId} (${res.status}): ${text.slice(0, 500)}`);
+    }
+
+    const data = await res.json();
+    for (const block of data.results ?? []) {
+      blockIds.push(block.id);
+    }
+
+    hasMore = Boolean(data.has_more);
+    startCursor = data.next_cursor;
+  }
+
+  // Archive existing children
+  await Promise.all(
+    blockIds.map(async (id) => {
+      const res = await apiFetch(`https://api.notion.com/v1/blocks/${id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ archived: true }),
+      }, config);
+      if (!res.ok) {
+        if (stats) stats.errors = (stats.errors ?? 0) + 1;
+        const text = await res.text();
+        console.error(`Failed to archive block ${id} (${res.status}): ${text.slice(0, 300)}`);
+      }
+    })
+  );
+
+  if (!children || children.length === 0) return;
+
+  const appendRes = await apiFetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ children }),
+  }, config);
+
+  if (!appendRes.ok) {
+    if (stats) stats.errors = (stats.errors ?? 0) + 1;
+    const text = await appendRes.text();
+    throw new Error(`Failed to append children for page ${pageId} (${appendRes.status}): ${text.slice(0, 500)}`);
+  }
 }
 
 export async function syncToNotion(config) {
@@ -197,74 +450,170 @@ export async function syncToNotion(config) {
 
   const total = rows.length;
   const onProgress = config.onProgress ?? null;
+  const onStats = config.onStats ?? null;
   let done = 0;
 
   console.log(`Syncing ${total} rows to Notion.`);
 
   const malCache = await populateMalCache(config);
+  const { pagesByMalId } = await fetchExistingPagesByMalId(config);
+  const seenMalIds = new Set();
+  const stats = {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    archived: 0,
+    skipped: 0,
+    errors: 0,
+  };
+
+  if (onStats) onStats(stats);
 
   for (const row of rows) {
-    const animeName   = String(row[2] ?? '');
-    const trueScore   = row[3] !== undefined ? Number(row[3]) : null;
-    const score       = row[3] !== undefined ? Math.round(Number(row[3]) * 10) : null;
-    const watchYear   = row[4] !== undefined && row[4] !== '' ? Number(row[4]) : null;
-    const releaseYear = row[5] !== undefined && row[5] !== '' ? Number(row[5]) : null;
-    const caughtUp    = String(row[7] ?? '').toUpperCase() === 'TRUE';
-    const malUrl      = row[12] ?? '';
-    const notes       = row[13] ?? '';
+    const { payloadCore, key, hash } = buildRowPayload(row, malCache, config);
+    const malId = key.malId;
+    const animeName = String(row[2] ?? '');
 
-    const match = malUrl ? malUrl.match(/\/anime\/(\d+)/) : null;
-    let imgUrl = '';
-    let malSynopsisBlocks = splitTextIntoParagraphs('');
-    let malScore = null;
-
-    if (match) {
-      const cached = malCache[match[1]];
-      if (cached) {
-        imgUrl = cached.image ?? '';
-        malSynopsisBlocks = splitTextIntoParagraphs(cached.synopsis ?? '');
-        malScore = cached.mean !== undefined && cached.mean !== 'NA'
-          ? Number(cached.mean)
-          : null;
-      } else {
-        console.warn(`No MAL cache entry for id ${match[1]} (${animeName})`);
-      }
-    } else {
-      console.warn(`No anime ID found in URL for "${animeName}": ${malUrl}`);
+    if (malId == null) {
+      console.warn(`Skipping row without MAL ID for "${animeName}".`);
+      stats.skipped++;
+      done++;
+      if (onProgress) onProgress(done, total, 'Syncing');
+      if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
+      continue;
     }
 
-    const paragraphBlocks = splitTextIntoParagraphs(notes);
+    const malIdKey = String(malId);
+    seenMalIds.add(malIdKey);
+    const existing = pagesByMalId[malIdKey];
+
+    if (existing && existing.syncHash === hash) {
+      // No changes; skip any Notion requests.
+      stats.unchanged++;
+      done++;
+      if (onProgress) onProgress(done, total, 'Syncing');
+      if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
+      continue;
+    }
+
+    if (existing) {
+      // Update in-place
+      stats.updated++;
+      const patchRes = await apiFetch(`https://api.notion.com/v1/pages/${existing.pageId}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ properties: payloadCore.properties, icon: payloadCore.icon }),
+      }, config);
+
+      if (!patchRes.ok) {
+        stats.errors++;
+        const text = await patchRes.text();
+        console.error(`Failed to update page for "${animeName}" (${patchRes.status}): ${text.slice(0, 500)}`);
+      } else {
+        try {
+          await replacePageContent(existing.pageId, payloadCore.children, config, stats);
+        } catch (err) {
+          console.error(String(err));
+        }
+      }
+    } else {
+      // Create new
+      stats.created++;
+      const payload = {
+        parent: { data_source_id: resolvedDataSourceId },
+        ...payloadCore,
+      };
+
+      const notionRes = await apiFetch('https://api.notion.com/v1/pages', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      }, config);
+
+      if (!notionRes.ok) {
+        stats.errors++;
+        const text = await notionRes.text();
+        console.error(`Failed to create page for "${animeName}" (${notionRes.status}): ${text.slice(0, 500)}`);
+      }
+    }
+
+    done++;
+    if (onProgress) onProgress(done, total, 'Syncing');
+    if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
+
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  // Archive pages that no longer appear in the sheet
+  const archiveTargets = Object.keys(pagesByMalId).filter((malIdKey) => !seenMalIds.has(malIdKey));
+  if (archiveTargets.length) {
+    console.log(`Archiving ${archiveTargets.length} pages no longer present in sheet...`);
+    await Promise.all(
+      archiveTargets.map(async (malIdKey) => {
+        const pageId = pagesByMalId[malIdKey].pageId;
+        const res = await apiFetch(`https://api.notion.com/v1/pages/${pageId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ archived: true }),
+        }, config);
+        if (res.ok) {
+          stats.archived++;
+        } else {
+          stats.errors++;
+          const text = await res.text();
+          console.error(`Failed to archive page ${pageId} (${res.status}): ${text.slice(0, 300)}`);
+        }
+      })
+    );
+
+    if (onStats) onStats(stats);
+  }
+}
+
+export async function forceAddToNotion(config) {
+  const { DATA_SOURCE_ID, NOTION_DATA_SOURCE_ID } = config;
+  const resolvedDataSourceId = NOTION_DATA_SOURCE_ID ?? DATA_SOURCE_ID;
+  const headers = notionHeaders(config);
+
+  let rows = await getSheetData(config);
+  rows = rows.filter((row) => row[2] && row[2] !== '');
+
+  const total = rows.length;
+  const onProgress = config.onProgress ?? null;
+  const onStats = config.onStats ?? null;
+  const stats = {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    archived: 0,
+    skipped: 0,
+    errors: 0,
+  };
+
+  if (onStats) onStats(stats);
+
+  console.log(`Force-adding ${total} rows to Notion.`);
+
+  const malCache = await populateMalCache(config);
+
+  let done = 0;
+  for (const row of rows) {
+    const { payloadCore, key } = buildRowPayload(row, malCache, config);
+    const malId = key.malId;
+    const animeName = String(row[2] ?? '');
+
+    if (malId == null) {
+      console.warn(`Skipping row without MAL ID for "${animeName}".`);
+      stats.skipped++;
+      done++;
+      if (onProgress) onProgress(done, total, 'Force adding');
+      if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
+      continue;
+    }
 
     const payload = {
       parent: { data_source_id: resolvedDataSourceId },
-      properties: {
-        Title:              { title: [{ text: { content: animeName } }] },
-        'Given Score':      { number: Number.isFinite(trueScore)   ? trueScore   : null },
-        'Score Out of 100': { number: Number.isFinite(score)        ? score        : null },
-        'Watch Year':       { number: Number.isFinite(watchYear)    ? watchYear    : null },
-        'Release Year':     { number: Number.isFinite(releaseYear)  ? releaseYear  : null },
-        'MAL Score':        { number: Number.isFinite(malScore)     ? malScore     : null },
-        'Caught up?':       { select: { name: caughtUp ? 'Yes' : 'No' } },
-        'MAL Link':         { url: malUrl || null },
-        Cover: {
-          files: imgUrl
-            ? [{ name: 'cover.jpg', external: { url: imgUrl } }]
-            : [],
-        },
-      },
-      ...(imgUrl ? { icon: { type: 'external', external: { url: imgUrl } } } : {}),
-      children: [
-        {
-          object: 'block', type: 'heading_2',
-          heading_2: { rich_text: [{ type: 'text', text: { content: 'My Comments' } }] },
-        },
-        ...paragraphBlocks,
-        {
-          object: 'block', type: 'heading_2',
-          heading_2: { rich_text: [{ type: 'text', text: { content: 'MAL Synopsis' } }] },
-        },
-        ...malSynopsisBlocks,
-      ],
+      ...payloadCore,
     };
 
     const notionRes = await apiFetch('https://api.notion.com/v1/pages', {
@@ -273,18 +622,18 @@ export async function syncToNotion(config) {
       body: JSON.stringify(payload),
     }, config);
 
-    done++;
-    if (!notionRes.ok) {
+    if (notionRes.ok) {
+      stats.created++;
+    } else {
+      stats.errors++;
       const text = await notionRes.text();
       console.error(`Failed to create page for "${animeName}" (${notionRes.status}): ${text.slice(0, 500)}`);
     }
-      if (onProgress) onProgress(done, total, 'Syncing');
+
+    done++;
+    if (onProgress) onProgress(done, total, 'Force adding');
+    if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
 
     await new Promise((r) => setTimeout(r, 200));
   }
-}
-
-export async function clearAndSync(config) {
-  await clearNotionDatabase(config);
-  await syncToNotion(config);
 }

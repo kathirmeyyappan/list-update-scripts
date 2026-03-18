@@ -175,6 +175,25 @@
         transition: width 0.15s ease-out;
       }
 
+      /* Stats counters */
+      .stats {
+        margin: 10px 0 14px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 14px;
+      }
+      .stats-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+      .stats-v {
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+      }
+
       /* Status */
       .status {
         padding: 10px 0;
@@ -306,7 +325,7 @@
       <div class="header">
         <div>
           <div class="title">life's work Spreadsheet → Notion Sync</div>
-          <div class="subtitle">Clear and sync the Notion database from the sheet.</div>
+          <div class="subtitle">Update diffs for existing pages, or append new pages.</div>
         </div>
         <button id="btn-config" class="btn-config">⚙ Config</button>
       </div>
@@ -319,7 +338,7 @@
       <div class="buttons">
         <button id="btn-clear" class="btn-danger">Clear database</button>
         <button id="btn-sync" class="btn-primary">Sync only</button>
-        <button id="btn-clear-sync" class="btn-main">Clear + Sync</button>
+        <button id="btn-clear-sync" class="btn-main">Force add (append)</button>
       </div>
 
       <div id="config-panel" class="config-panel" style="display:none;">
@@ -333,6 +352,27 @@
 
       <div id="progress-wrap" class="progress-wrap">
         <div id="progress-bar" class="progress-bar"></div>
+      </div>
+
+      <div id="stats" class="stats" aria-live="polite">
+        <div class="stats-row">
+          <span class="stats-k">Created</span><span class="stats-v" id="st-created">0</span>
+        </div>
+        <div class="stats-row">
+          <span class="stats-k">Updated</span><span class="stats-v" id="st-updated">0</span>
+        </div>
+        <div class="stats-row">
+          <span class="stats-k">Unchanged</span><span class="stats-v" id="st-unchanged">0</span>
+        </div>
+        <div class="stats-row">
+          <span class="stats-k">Archived</span><span class="stats-v" id="st-archived">0</span>
+        </div>
+        <div class="stats-row">
+          <span class="stats-k">Skipped</span><span class="stats-v" id="st-skipped">0</span>
+        </div>
+        <div class="stats-row">
+          <span class="stats-k">Errors</span><span class="stats-v" id="st-errors">0</span>
+        </div>
       </div>
 
       <div class="status">

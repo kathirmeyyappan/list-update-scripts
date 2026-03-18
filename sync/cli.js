@@ -6,7 +6,7 @@ import 'dotenv/config';
 import process from 'process';
 import readline from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
-import { clearNotionDatabase, syncToNotion, clearAndSync } from './public/notionSync.js';
+import { clearNotionDatabase, syncToNotion, forceAddToNotion } from './public/notionSync.js';
 
 const DEFAULTS = {
   SHEET_KEY:          '1MCPi0GCz_YrLal50ey09ZvOqXGf8FH23XMC1TeP2etA',
@@ -54,11 +54,11 @@ async function runAction(action) {
   } else if (action === 'sync') {
     await syncToNotion(CONFIG);
     console.log('Sync completed.');
-  } else if (action === 'clear-and-sync') {
-    await clearAndSync(CONFIG);
-    console.log('Clear and sync completed.');
+  } else if (action === 'force-add') {
+    await forceAddToNotion(CONFIG);
+    console.log('Force add completed.');
   } else {
-    console.error(`Unknown action "${action}". Use: clear, sync, clear-and-sync`);
+    console.error(`Unknown action "${action}". Use: clear, sync, force-add`);
   }
 }
 
@@ -77,7 +77,7 @@ async function main() {
 
   const rl = readline.createInterface({ input, output });
   console.log('Anime → Notion CLI');
-  console.log('Commands: clear, sync, clear-and-sync, exit');
+  console.log('Commands: clear | sync | force-add (exit to quit)');
 
   while (true) {
     const line = (await rl.question('> ')).trim().toLowerCase();

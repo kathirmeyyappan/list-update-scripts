@@ -4,7 +4,7 @@ A collection of scripts for maintaining my anime tracking spreadsheet, [life's w
 
 ## Directories
 
-**`sync/`** — Syncs the spreadsheet + MAL data into a Notion database. Runs as a CLI or a web app hosted at [kathirm.com/sync](https://kathirm.com/sync). See [`sync/README.md`](sync/README.md) for details.
+**`sync/`** — Syncs the spreadsheet + MAL data into a Notion database. Runs as a CLI or a web app hosted at [kathirm.com/sync](https://kathirm.com/sync). See [`sync/README.md`](sync/README.md) for details. For AI agents: [`sync/AGENT_CONTEXT.md`](sync/AGENT_CONTEXT.md).
 
 **`python-scripts/`** — Pulls updated MAL scores back into the spreadsheet.
 

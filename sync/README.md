@@ -1,6 +1,6 @@
 # spreadsheet-notion-sync
 
-Syncs an anime tracking Google Sheet + MyAnimeList data into a Notion database. Runs as a local CLI or a static web app, hosted on GitHub Pages and facilitated with Cloudflare workers for Notion POST requests.
+Syncs an anime tracking Google Sheet + MyAnimeList data into a Notion database. Runs as a local CLI or a static web app (GitHub Pages + Cloudflare Worker for API proxy).
 
 ## Screenshots
 
@@ -8,42 +8,13 @@ Syncs an anime tracking Google Sheet + MyAnimeList data into a Notion database. 
 
 ## How it works
 
-Data flows one way: **Google Sheets + MAL → Notion**.
-
-1. Reads rows from the Google Sheet (title, scores, watch year, MAL URL, notes, etc.)
-2. For each row, pulls cover art, synopsis, and MAL score from the MAL API
-3. Creates a page in the Notion database with all the combined data
-
-A full sync clears the Notion database first to avoid duplicates, then repopulates it from scratch.
-
-## Web UI
-
-The web app is a static site (`public/`) that can be hosted anywhere — GitHub Pages, locally, etc.
-
-All sync logic runs in the browser. A Cloudflare Worker (`cloudflare/worker.js`) sits in front of the external APIs (Notion, Google Sheets, MAL) to handle CORS and inject API credentials, so no secrets are ever stored in the frontend.
-
-### Buttons
-
-| Button | What it does |
-|---|---|
-| **Clear database** | Archives all pages in the Notion database |
-| **Sync only** | Populates Notion from the sheet (may create duplicates if not cleared first) |
-| **Clear + Sync** | Full resync — clears then repopulates |
-
-Progress is shown as a bar above the status line while an operation is running.
-
-### Serving locally
-
-```bash
-cd spreadsheet-notion-sync
-npx serve public
-```
+Data flows **Google Sheets + MAL → Notion**. The sheet and MAL list are read; each row becomes or updates a page in the Notion database. Sync uses a stable **ID** (from the MAL URL) and a **content hash** so existing pages are updated in place and only changed or new rows cause writes. To wipe and re-import, run **Clear** then **Sync**.
 
 ---
 
 ## CLI
 
-The CLI runs the same sync logic directly from the terminal using the Cloudflare Worker is not needed — it calls the APIs directly with credentials from `.env`.
+Run from the terminal with credentials in `.env` (no worker needed).
 
 ### Setup
 
@@ -52,49 +23,62 @@ cd spreadsheet-notion-sync
 npm install
 ```
 
-Create `.env` with the required secrets (see `.env` for the current values — only secrets are stored there, everything else is hardcoded):
+Create a `.env` file with: `GOOGLE_API_KEY`, `MAL_CLIENT_ID`, `NOTION_TOKEN`, `DATA_SOURCE_ID`, `NOTION_DATABASE_ID`. Optional: `SHEET_KEY`, `SHEET_TAB_NAME`, `MAL_USER_NAME` (defaults in `cli.js`).
 
-```
-GOOGLE_API_KEY=...
-MAL_CLIENT_ID=...
-NOTION_TOKEN=...
-```
+### Commands
+
+| Command      | What to do |
+|-------------|------------|
+| `clear`     | Archive every page in the Notion database. |
+| `sync`      | Diff-based sync: update changed pages, add new rows, archive pages no longer in the sheet. |
+| `force-add` | Append a new page per sheet row (no clear, no prune; can create duplicates). |
+
+Wipe and re-import: run `clear` then `sync`.
 
 ### Usage
 
-Run with a command directly:
-
 ```bash
-npm run cli clear          # archive all Notion pages
-npm run cli sync           # sync sheet → Notion
-npm run cli clear-and-sync # full resync
+npm run cli clear
+npm run cli sync
+npm run cli force-add
 ```
 
-Or run interactively:
+Or run `npm run cli` and type `clear`, `sync`, `force-add`, or `exit`.
 
-```bash
-npm run cli
-# then type: clear / sync / clear-and-sync / exit
-```
+---
 
+## Web UI
+
+Same three actions as the CLI. The app is in `public/`; you serve it locally or host it (e.g. GitHub Pages). It talks to a Cloudflare Worker that holds API keys and checks a password — the browser never sees secrets.
+
+### What to do
+
+1. Deploy the worker (`cloudflare/worker.js`) and set its secrets (see Cloudflare Worker below).
+2. Run the app: `npx serve public` (or use your host). Open the URL (e.g. `http://localhost:3000`).
+3. Open the config panel and set the **Password** (must match the worker’s `AUTH_PASSWORD`) and worker URL if needed.
+4. Use the three buttons:
+
+| Button                 | What to do |
+|------------------------|------------|
+| **Clear database**     | Archive all pages in the Notion database. |
+| **Sync only**          | Diff-based sync: update changed, add new, archive missing. |
+| **Force add (append)** | Add a new page for every sheet row (can create duplicates). |
+
+### Stats
+
+After a run, the UI shows counts:
+
+- **Created** — New Notion page added.
+- **Updated** — Existing page content updated.
+- **Unchanged** — Row matched an existing page and content was identical (no write).
+- **Archived** — Page was archived (after Clear: all; after Sync: pages whose anime is no longer in the sheet).
+- **Skipped** — Row had no MAL link; skipped.
+- **Errors** — A Notion or API call failed for that item.
+
+---
 
 ## Cloudflare Worker
 
-The worker (`cloudflare/worker.js`) is a transparent proxy that:
-- Verifies a password header (`X-Auth`) so only you can trigger syncs
-- Forwards requests to Notion, Google Sheets, and MAL with the real API credentials injected
-- Adds CORS headers so the browser can talk to these APIs
+The worker proxies Notion, Google Sheets, and MAL so the browser can call them without storing keys. It checks the `X-Auth` header against `AUTH_PASSWORD` and injects credentials.
 
-**Note:** The worker is deployed manually — paste `cloudflare/worker.js` into the Cloudflare dashboard editor and redeploy whenever it changes.
-(Workers & Pages → anime-sync → Edit Code)
-
-### Worker env vars
-
-Set these as **Secrets** in the Cloudflare dashboard (Settings → Variables and Secrets):
-
-| Variable | Description |
-|---|---|
-| `AUTH_PASSWORD` | Password the web UI sends to authorize operations |
-| `NOTION_TOKEN` | Notion integration token (`ntn_...`) |
-| `GOOGLE_API_KEY` | Google Cloud API key with Sheets API enabled |
-| `MAL_CLIENT_ID` | MyAnimeList API client ID |
+Deploy manually: paste `cloudflare/worker.js` into the Cloudflare dashboard (Workers & Pages → your worker → Edit Code). Set **Secrets**: `AUTH_PASSWORD`, `NOTION_TOKEN`, `GOOGLE_API_KEY`, `MAL_CLIENT_ID`.

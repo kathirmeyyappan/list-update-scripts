@@ -1,4 +1,4 @@
-import { clearNotionDatabase, syncToNotion, clearAndSync } from './notionSync.js';
+import { clearNotionDatabase, syncToNotion, forceAddToNotion } from './notionSync.js';
 
 const STORAGE_KEY = 'notion_sync_config';
 const REQUIRED = ['PASSWORD'];
@@ -21,11 +21,29 @@ function isConfigComplete() {
 
 function setProgress(done, total, label) {
   progressWrap.classList.add('visible');
-  progressBar.style.width = `${(done / total) * 100}%`;
+  progressBar.style.width = total ? `${(done / total) * 100}%` : '0%';
   statusMessage.textContent = `${label}… ${done} / ${total}`;
   if (done === total) {
     setTimeout(() => progressWrap.classList.remove('visible'), 600);
   }
+}
+
+function setStats(stats = {}) {
+  // Leanest approach: just update all counters at once.
+  const v = {
+    created:   stats.created   ?? 0,
+    updated:   stats.updated   ?? 0,
+    unchanged: stats.unchanged ?? 0,
+    archived:  stats.archived  ?? 0,
+    skipped:   stats.skipped   ?? 0,
+    errors:    stats.errors    ?? 0,
+  };
+  if (stCreated) stCreated.textContent = String(v.created);
+  if (stUpdated) stUpdated.textContent = String(v.updated);
+  if (stUnchanged) stUnchanged.textContent = String(v.unchanged);
+  if (stArchived) stArchived.textContent = String(v.archived);
+  if (stSkipped) stSkipped.textContent = String(v.skipped);
+  if (stErrors) stErrors.textContent = String(v.errors);
 }
 
 function getConfig() {
@@ -33,6 +51,7 @@ function getConfig() {
     ...DEFAULTS,
     ...loadConfig(),
     onProgress: (done, total, label = 'Progress') => setProgress(done, total, label),
+    onStats: (stats) => setStats(stats),
   };
 }
 
@@ -49,6 +68,12 @@ const btnSaveCfg    = document.getElementById('btn-save-config');
 const cfgWarning    = document.getElementById('cfg-warning');
 const progressWrap  = document.getElementById('progress-wrap');
 const progressBar   = document.getElementById('progress-bar');
+const stCreated     = document.getElementById('st-created');
+const stUpdated     = document.getElementById('st-updated');
+const stUnchanged   = document.getElementById('st-unchanged');
+const stArchived    = document.getElementById('st-archived');
+const stSkipped     = document.getElementById('st-skipped');
+const stErrors      = document.getElementById('st-errors');
 
 const FIELDS = [
   { id: 'cfg-password', key: 'PASSWORD', label: 'Password', type: 'password', required: true },
@@ -121,6 +146,7 @@ async function callAction(fn, label) {
     return;
   }
 
+  setStats({ created: 0, updated: 0, unchanged: 0, archived: 0, skipped: 0, errors: 0 });
   setLoading(true);
   statusMessage.textContent = `${label} started…`;
 
@@ -134,9 +160,9 @@ async function callAction(fn, label) {
   }
 }
 
-btnClear.addEventListener('click',     () => callAction(clearNotionDatabase, 'Clear'));
-btnSync.addEventListener('click',      () => callAction(syncToNotion, 'Sync'));
-btnClearSync.addEventListener('click', () => callAction(clearAndSync, 'Clear + Sync'));
+btnClear.addEventListener('click',     () => callAction(clearNotionDatabase, 'Clear database'));
+btnSync.addEventListener('click',      () => callAction(syncToNotion, 'Sync only'));
+btnClearSync.addEventListener('click', () => callAction(forceAddToNotion, 'Force add'));
 
 // --- Init ---
 
