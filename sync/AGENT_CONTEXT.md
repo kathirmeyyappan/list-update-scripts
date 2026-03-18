@@ -135,7 +135,12 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 - **computeRowHash(payloadCore):** FNV-1a over JSON of `{ properties, children, icon }` → hex string.
 - **buildRowPayload(row, malCache, config):** Builds Notion payload from row + MAL cache; sets **ID** and **Sync Hash**; returns `{ payloadCore, key, hash }`. Row indices and Notion property names as in "Google Sheet format" and "Notion schema" above.
 - **notionHeaders(config):** Returns `Notion-Version: 2022-06-28`, Content-Type, accept; if !WORKER_URL and NOTION_TOKEN, adds `Authorization: Bearer {NOTION_TOKEN}`.
-- **replacePageContent(pageId, children, config, stats):** GET `blocks/{pageId}/children` (paginated), then PATCH each block with `{ archived: true }`, then PATCH `blocks/{pageId}/children` with `{ children }`. Increments `stats.errors` on PATCH failures. Not exported.
+- **createStats():** Returns `{ created: 0, updated: 0, unchanged: 0, archived: 0, skipped: 0, errors: 0 }`.
+- **getFilteredSheetRows(config):** getSheetData then filter rows where row[2] non-empty.
+- **reportProgress(done, total, label, stats, onProgress, onStats):** Calls onProgress and onStats (onStats batched every 10 or at total).
+- **archiveNotionPage(pageId, config):** PATCH page archived, returns res.ok.
+- **createNotionPage(resolvedDataSourceId, payloadCore, config, stats, logLabel):** POST page, updates stats.created or stats.errors, logs on error.
+- **replacePageContent(pageId, children, config, stats):** Archive existing blocks then append new children. Increments stats.errors on PATCH failures. Not exported.
 
 ### splitTextIntoParagraphs (exported)
 
@@ -260,4 +265,4 @@ Object with numeric fields (all optional): **created**, **updated**, **unchanged
 
 ## Rate limiting
 
-- syncToNotion and forceAddToNotion: `await new Promise(r => setTimeout(r, 200))` after each row (200ms between row operations).
+- syncToNotion and forceAddToNotion: `ROW_DELAY_MS` (200) after each row to reduce Notion 429 risk.

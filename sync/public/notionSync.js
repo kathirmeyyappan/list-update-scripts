@@ -7,6 +7,8 @@
 // CLI mode (direct, no worker):
 //   config = { NOTION_TOKEN, GOOGLE_API_KEY, MAL_CLIENT_ID, SHEET_KEY, ... }
 
+const ROW_DELAY_MS = 200;
+
 // Route a fetch through the Cloudflare worker (if configured) or call directly.
 function apiFetch(url, options = {}, config = {}) {
   if (!config.WORKER_URL) return fetch(url, options);
@@ -108,6 +110,20 @@ async function getSheetData(config) {
   return data.values ?? [];
 }
 
+async function getFilteredSheetRows(config) {
+  const rows = await getSheetData(config);
+  return rows.filter((row) => row[2] && row[2] !== '');
+}
+
+function createStats() {
+  return { created: 0, updated: 0, unchanged: 0, archived: 0, skipped: 0, errors: 0 };
+}
+
+function reportProgress(done, total, label, stats, onProgress, onStats) {
+  if (onProgress) onProgress(done, total, label);
+  if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
+}
+
 function notionHeaders(config) {
   const h = {
     'Notion-Version': '2022-06-28',
@@ -118,6 +134,29 @@ function notionHeaders(config) {
     h.Authorization = `Bearer ${config.NOTION_TOKEN}`;
   }
   return h;
+}
+
+async function archiveNotionPage(pageId, config) {
+  const headers = notionHeaders(config);
+  const res = await apiFetch(`https://api.notion.com/v1/pages/${pageId}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ archived: true }),
+  }, config);
+  return res.ok;
+}
+
+async function createNotionPage(resolvedDataSourceId, payloadCore, config, stats, logLabel) {
+  const headers = notionHeaders(config);
+  const payload = { parent: { data_source_id: resolvedDataSourceId }, ...payloadCore };
+  const res = await apiFetch('https://api.notion.com/v1/pages', { method: 'POST', headers, body: JSON.stringify(payload) }, config);
+  if (res.ok) {
+    stats.created++;
+  } else {
+    stats.errors++;
+    const text = await res.text();
+    console.error(`Failed to create page for "${logLabel}" (${res.status}): ${text.slice(0, 500)}`);
+  }
 }
 
 async function fetchExistingPagesByMalId(config) {
@@ -342,49 +381,33 @@ export async function clearNotionDatabase(config) {
 
   console.log(`Archiving ${pageIds.length} pages...`);
 
-  // Phase 2: fire all archive requests at once, tracking progress
   const total = pageIds.length;
   const onProgress = config.onProgress ?? null;
   const onStats = config.onStats ?? null;
-  const stats = {
-    created: 0,
-    updated: 0,
-    unchanged: 0,
-    archived: 0,
-    skipped: 0,
-    errors: 0,
-  };
-
+  const stats = createStats();
   if (onStats) onStats(stats);
   let done = 0;
 
   await Promise.all(
     pageIds.map(async (id) => {
-      const patchRes = await apiFetch(`https://api.notion.com/v1/pages/${id}`, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({ archived: true }),
-      }, config);
+      const ok = await archiveNotionPage(id, config);
       done++;
-      if (patchRes.ok) {
-        stats.archived++;
-      } else {
+      if (ok) stats.archived++;
+      else {
         stats.errors++;
-        const text = await patchRes.text();
-        console.error(`Failed to archive ${id} (${patchRes.status}): ${text.slice(0, 300)}`);
+        console.error(`Failed to archive ${id}`);
       }
-      if (onProgress) onProgress(done, total, 'Archiving');
-      if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
+      reportProgress(done, total, 'Archiving', stats, onProgress, onStats);
     })
   );
 
   console.log(`Done. Archived ${total} pages.`);
 }
 
+// Replaces page body: archive existing blocks then append new children.
 async function replacePageContent(pageId, children, config, stats) {
   const headers = notionHeaders(config);
 
-  // Fetch existing children
   let hasMore = true;
   let startCursor;
   const blockIds = [];
@@ -409,7 +432,6 @@ async function replacePageContent(pageId, children, config, stats) {
     startCursor = data.next_cursor;
   }
 
-  // Archive existing children
   await Promise.all(
     blockIds.map(async (id) => {
       const res = await apiFetch(`https://api.notion.com/v1/blocks/${id}`, {
@@ -445,9 +467,7 @@ export async function syncToNotion(config) {
   const resolvedDataSourceId = NOTION_DATA_SOURCE_ID ?? DATA_SOURCE_ID;
   const headers = notionHeaders(config);
 
-  let rows = await getSheetData(config);
-  rows = rows.filter((row) => row[2] && row[2] !== '');
-
+  const rows = await getFilteredSheetRows(config);
   const total = rows.length;
   const onProgress = config.onProgress ?? null;
   const onStats = config.onStats ?? null;
@@ -458,15 +478,7 @@ export async function syncToNotion(config) {
   const malCache = await populateMalCache(config);
   const { pagesByMalId } = await fetchExistingPagesByMalId(config);
   const seenMalIds = new Set();
-  const stats = {
-    created: 0,
-    updated: 0,
-    unchanged: 0,
-    archived: 0,
-    skipped: 0,
-    errors: 0,
-  };
-
+  const stats = createStats();
   if (onStats) onStats(stats);
 
   for (const row of rows) {
@@ -478,8 +490,7 @@ export async function syncToNotion(config) {
       console.warn(`Skipping row without MAL ID for "${animeName}".`);
       stats.skipped++;
       done++;
-      if (onProgress) onProgress(done, total, 'Syncing');
-      if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
+      reportProgress(done, total, 'Syncing', stats, onProgress, onStats);
       continue;
     }
 
@@ -488,16 +499,13 @@ export async function syncToNotion(config) {
     const existing = pagesByMalId[malIdKey];
 
     if (existing && existing.syncHash === hash) {
-      // No changes; skip any Notion requests.
       stats.unchanged++;
       done++;
-      if (onProgress) onProgress(done, total, 'Syncing');
-      if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
+      reportProgress(done, total, 'Syncing', stats, onProgress, onStats);
       continue;
     }
 
     if (existing) {
-      // Update in-place
       stats.updated++;
       const patchRes = await apiFetch(`https://api.notion.com/v1/pages/${existing.pageId}`, {
         method: 'PATCH',
@@ -517,55 +525,28 @@ export async function syncToNotion(config) {
         }
       }
     } else {
-      // Create new
-      stats.created++;
-      const payload = {
-        parent: { data_source_id: resolvedDataSourceId },
-        ...payloadCore,
-      };
-
-      const notionRes = await apiFetch('https://api.notion.com/v1/pages', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      }, config);
-
-      if (!notionRes.ok) {
-        stats.errors++;
-        const text = await notionRes.text();
-        console.error(`Failed to create page for "${animeName}" (${notionRes.status}): ${text.slice(0, 500)}`);
-      }
+      await createNotionPage(resolvedDataSourceId, payloadCore, config, stats, animeName);
     }
 
     done++;
-    if (onProgress) onProgress(done, total, 'Syncing');
-    if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
-
-    await new Promise((r) => setTimeout(r, 200));
+    reportProgress(done, total, 'Syncing', stats, onProgress, onStats);
+    await new Promise((r) => setTimeout(r, ROW_DELAY_MS));
   }
 
-  // Archive pages that no longer appear in the sheet
   const archiveTargets = Object.keys(pagesByMalId).filter((malIdKey) => !seenMalIds.has(malIdKey));
   if (archiveTargets.length) {
     console.log(`Archiving ${archiveTargets.length} pages no longer present in sheet...`);
     await Promise.all(
       archiveTargets.map(async (malIdKey) => {
         const pageId = pagesByMalId[malIdKey].pageId;
-        const res = await apiFetch(`https://api.notion.com/v1/pages/${pageId}`, {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({ archived: true }),
-        }, config);
-        if (res.ok) {
-          stats.archived++;
-        } else {
+        const ok = await archiveNotionPage(pageId, config);
+        if (ok) stats.archived++;
+        else {
           stats.errors++;
-          const text = await res.text();
-          console.error(`Failed to archive page ${pageId} (${res.status}): ${text.slice(0, 300)}`);
+          console.error(`Failed to archive page ${pageId}`);
         }
       })
     );
-
     if (onStats) onStats(stats);
   }
 }
@@ -573,30 +554,19 @@ export async function syncToNotion(config) {
 export async function forceAddToNotion(config) {
   const { DATA_SOURCE_ID, NOTION_DATA_SOURCE_ID } = config;
   const resolvedDataSourceId = NOTION_DATA_SOURCE_ID ?? DATA_SOURCE_ID;
-  const headers = notionHeaders(config);
 
-  let rows = await getSheetData(config);
-  rows = rows.filter((row) => row[2] && row[2] !== '');
-
+  const rows = await getFilteredSheetRows(config);
   const total = rows.length;
   const onProgress = config.onProgress ?? null;
   const onStats = config.onStats ?? null;
-  const stats = {
-    created: 0,
-    updated: 0,
-    unchanged: 0,
-    archived: 0,
-    skipped: 0,
-    errors: 0,
-  };
-
+  const stats = createStats();
   if (onStats) onStats(stats);
 
   console.log(`Force-adding ${total} rows to Notion.`);
 
   const malCache = await populateMalCache(config);
-
   let done = 0;
+
   for (const row of rows) {
     const { payloadCore, key } = buildRowPayload(row, malCache, config);
     const malId = key.malId;
@@ -606,34 +576,13 @@ export async function forceAddToNotion(config) {
       console.warn(`Skipping row without MAL ID for "${animeName}".`);
       stats.skipped++;
       done++;
-      if (onProgress) onProgress(done, total, 'Force adding');
-      if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
+      reportProgress(done, total, 'Force adding', stats, onProgress, onStats);
       continue;
     }
 
-    const payload = {
-      parent: { data_source_id: resolvedDataSourceId },
-      ...payloadCore,
-    };
-
-    const notionRes = await apiFetch('https://api.notion.com/v1/pages', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    }, config);
-
-    if (notionRes.ok) {
-      stats.created++;
-    } else {
-      stats.errors++;
-      const text = await notionRes.text();
-      console.error(`Failed to create page for "${animeName}" (${notionRes.status}): ${text.slice(0, 500)}`);
-    }
-
+    await createNotionPage(resolvedDataSourceId, payloadCore, config, stats, animeName);
     done++;
-    if (onProgress) onProgress(done, total, 'Force adding');
-    if (onStats && (done % 10 === 0 || done === total)) onStats(stats);
-
-    await new Promise((r) => setTimeout(r, 200));
+    reportProgress(done, total, 'Force adding', stats, onProgress, onStats);
+    await new Promise((r) => setTimeout(r, ROW_DELAY_MS));
   }
 }
