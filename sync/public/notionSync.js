@@ -240,12 +240,15 @@ function buildRowKey(row) {
 }
 
 function computeRowHash(payloadCore) {
-  const normalized = {
+  // Build a minimal view for hashing without mutating the real payload
+  const base = {
     properties: payloadCore.properties,
     children: payloadCore.children,
     icon: payloadCore.icon ?? null,
   };
-  const json = JSON.stringify(normalized);
+  let json = JSON.stringify(base);
+  // TEMP: ignore image extension jitter (.webp vs .jpg) by stripping the extension in the hash string only
+  json = json.replace(/\.(webp|jpe?g)"/gi, '"');
   let hash = 2166136261; // FNV-1a 32-bit offset basis
   for (let i = 0; i < json.length; i++) {
     hash ^= json.charCodeAt(i);
