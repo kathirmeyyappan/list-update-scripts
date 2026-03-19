@@ -160,9 +160,15 @@ async function callAction(fn, label) {
   }
 }
 
-btnClear.addEventListener('click',     () => callAction(clearNotionDatabase, 'Clear database'));
-btnSync.addEventListener('click',      () => callAction(syncToNotion, 'Sync only'));
-btnClearSync.addEventListener('click', () => callAction(forceAddToNotion, 'Force add'));
+btnSync.addEventListener('click', () => callAction(syncToNotion, 'Sync only'));
+btnClear.addEventListener('click', () => {
+  if (!confirm('Archive all pages in the Notion database? This cannot be undone.')) return;
+  callAction(clearNotionDatabase, 'Clear database');
+});
+btnClearSync.addEventListener('click', () => {
+  if (!confirm('Force add will create a new page for every sheet row and can create duplicates. Continue?')) return;
+  callAction(forceAddToNotion, 'Force add');
+});
 
 // --- Init ---
 
