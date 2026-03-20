@@ -44,6 +44,17 @@ export function buildAnimePageChildren({ notesText, malSynopsisText }) {
   const paragraphBlocks = splitTextIntoParagraphs(String(notesText ?? ''));
   const malSynopsisBlocks = splitTextIntoParagraphs(String(malSynopsisText ?? ''));
 
+  const emptyParagraph = {
+    object: 'block',
+    type: 'paragraph',
+    paragraph: { rich_text: [{ type: 'text', text: { content: '' } }] },
+  };
+  const divider = {
+    object: 'block',
+    type: 'divider',
+    divider: {},
+  };
+
   return [
     {
       object: 'block',
@@ -51,11 +62,26 @@ export function buildAnimePageChildren({ notesText, malSynopsisText }) {
       heading_2: { rich_text: [{ type: 'text', text: { content: 'My Comments' } }] },
     },
     ...paragraphBlocks,
+    emptyParagraph,
+    divider,
     {
       object: 'block',
       type: 'heading_2',
       heading_2: { rich_text: [{ type: 'text', text: { content: 'MAL Synopsis' } }] },
     },
     ...malSynopsisBlocks,
+    emptyParagraph,
+    divider,
+    {
+      object: 'block',
+      type: 'heading_3',
+      heading_3: {
+        rich_text: [{
+          type: 'text',
+          text: { content: 'Kathir Meyyappan' },
+          annotations: { color: 'gray' },
+        }],
+      },
+    },
   ];
 }
