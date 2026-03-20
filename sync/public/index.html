@@ -119,6 +119,18 @@
         background: #991b1b;
       }
 
+      /* Hard sync — same depth as btn-danger/btn-primary, burnt orange (not bright) */
+      .btn-caution {
+        background: #7c2d12;
+        color: #fdba74;
+        border-color: rgba(251, 146, 60, 0.4);
+      }
+
+      .btn-caution:hover:not(:disabled) {
+        background: #9a3412;
+        border-color: rgba(253, 186, 116, 0.45);
+      }
+
       .btn-primary {
         background: #0c4a6e;
         color: #bae6fd;
@@ -325,7 +337,7 @@
       <div class="header">
         <div>
           <div class="title">life's work Spreadsheet → Notion Sync</div>
-          <div class="subtitle">Update diffs for existing pages, or append new pages.</div>
+          <div class="subtitle">Soft sync skips unchanged rows; hard sync re-writes everything from the sheet.</div>
         </div>
         <button id="btn-config" class="btn-config">⚙ Config</button>
       </div>
@@ -336,9 +348,9 @@
       </div>
 
       <div class="buttons">
-        <button id="btn-sync" class="btn-primary">Sync only</button>
+        <button id="btn-sync" class="btn-primary">Soft sync</button>
+        <button id="btn-hard-sync" class="btn-caution">Hard sync</button>
         <button id="btn-clear" class="btn-danger">Clear database</button>
-        <button id="btn-clear-sync" class="btn-danger">Force add (append)</button>
       </div>
 
       <div id="config-panel" class="config-panel" style="display:none;">

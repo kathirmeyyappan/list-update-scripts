@@ -465,7 +465,9 @@ async function replacePageContent(pageId, children, config, stats) {
   }
 }
 
-export async function syncToNotion(config) {
+/** @param {{ respectHash: boolean, progressLabel: string }} mode */
+async function runNotionSync(config, mode) {
+  const { respectHash, progressLabel } = mode;
   const { DATA_SOURCE_ID, NOTION_DATA_SOURCE_ID } = config;
   const resolvedDataSourceId = NOTION_DATA_SOURCE_ID ?? DATA_SOURCE_ID;
   const headers = notionHeaders(config);
@@ -476,7 +478,11 @@ export async function syncToNotion(config) {
   const onStats = config.onStats ?? null;
   let done = 0;
 
-  console.log(`Syncing ${total} rows to Notion.`);
+  console.log(
+    respectHash
+      ? `Soft sync: ${total} rows to Notion (hash-aware).`
+      : `Hard sync: ${total} rows to Notion (writing every row regardless of hash).`
+  );
 
   const malCache = await populateMalCache(config);
   const { pagesByMalId } = await fetchExistingPagesByMalId(config);
@@ -493,7 +499,7 @@ export async function syncToNotion(config) {
       console.warn(`Skipping row without MAL ID for "${animeName}".`);
       stats.skipped++;
       done++;
-      reportProgress(done, total, 'Syncing', stats, onProgress, onStats);
+      reportProgress(done, total, progressLabel, stats, onProgress, onStats);
       continue;
     }
 
@@ -501,10 +507,10 @@ export async function syncToNotion(config) {
     seenMalIds.add(malIdKey);
     const existing = pagesByMalId[malIdKey];
 
-    if (existing && existing.syncHash === hash) {
+    if (respectHash && existing && existing.syncHash === hash) {
       stats.unchanged++;
       done++;
-      reportProgress(done, total, 'Syncing', stats, onProgress, onStats);
+      reportProgress(done, total, progressLabel, stats, onProgress, onStats);
       continue;
     }
 
@@ -532,7 +538,7 @@ export async function syncToNotion(config) {
     }
 
     done++;
-    reportProgress(done, total, 'Syncing', stats, onProgress, onStats);
+    reportProgress(done, total, progressLabel, stats, onProgress, onStats);
     await new Promise((r) => setTimeout(r, ROW_DELAY_MS));
   }
 
@@ -554,38 +560,12 @@ export async function syncToNotion(config) {
   }
 }
 
-export async function forceAddToNotion(config) {
-  const { DATA_SOURCE_ID, NOTION_DATA_SOURCE_ID } = config;
-  const resolvedDataSourceId = NOTION_DATA_SOURCE_ID ?? DATA_SOURCE_ID;
+/** Hash-aware diff sync: skip rows unchanged vs stored Sync Hash; archive DB rows missing from sheet. */
+export async function syncToNotion(config) {
+  return runNotionSync(config, { respectHash: true, progressLabel: 'Soft syncing' });
+}
 
-  const rows = await getFilteredSheetRows(config);
-  const total = rows.length;
-  const onProgress = config.onProgress ?? null;
-  const onStats = config.onStats ?? null;
-  const stats = createStats();
-  if (onStats) onStats(stats);
-
-  console.log(`Force-adding ${total} rows to Notion.`);
-
-  const malCache = await populateMalCache(config);
-  let done = 0;
-
-  for (const row of rows) {
-    const { payloadCore, key } = buildRowPayload(row, malCache, config);
-    const malId = key.malId;
-    const animeName = String(row[2] ?? '');
-
-    if (malId == null) {
-      console.warn(`Skipping row without MAL ID for "${animeName}".`);
-      stats.skipped++;
-      done++;
-      reportProgress(done, total, 'Force adding', stats, onProgress, onStats);
-      continue;
-    }
-
-    await createNotionPage(resolvedDataSourceId, payloadCore, config, stats, animeName);
-    done++;
-    reportProgress(done, total, 'Force adding', stats, onProgress, onStats);
-    await new Promise((r) => setTimeout(r, ROW_DELAY_MS));
-  }
+/** Re-write every sheet row to Notion (properties, icon, body) even when hash matches; still adds new + archives missing. */
+export async function hardSyncToNotion(config) {
+  return runNotionSync(config, { respectHash: false, progressLabel: 'Hard syncing' });
 }

@@ -1,4 +1,4 @@
-import { clearNotionDatabase, syncToNotion, forceAddToNotion } from './notionSync.js';
+import { clearNotionDatabase, syncToNotion, hardSyncToNotion } from './notionSync.js';
 
 const STORAGE_KEY = 'notion_sync_config';
 const REQUIRED = ['PASSWORD'];
@@ -57,9 +57,9 @@ function getConfig() {
 
 // --- DOM refs ---
 
-const btnClear      = document.getElementById('btn-clear');
-const btnSync       = document.getElementById('btn-sync');
-const btnClearSync  = document.getElementById('btn-clear-sync');
+const btnClear     = document.getElementById('btn-clear');
+const btnSync      = document.getElementById('btn-sync');
+const btnHardSync  = document.getElementById('btn-hard-sync');
 const btnConfig     = document.getElementById('btn-config');
 const statusMessage = document.getElementById('status-message');
 const statusTag     = document.getElementById('status-tag');
@@ -129,7 +129,7 @@ btnSaveCfg.addEventListener('click', () => {
 // --- Action buttons ---
 
 function setLoading(isLoading) {
-  for (const btn of [btnClear, btnSync, btnClearSync]) btn.disabled = isLoading;
+  for (const btn of [btnClear, btnSync, btnHardSync]) btn.disabled = isLoading;
   if (isLoading) { statusTag.textContent = 'Working…'; statusTag.className = 'status-tag'; }
 }
 
@@ -160,14 +160,19 @@ async function callAction(fn, label) {
   }
 }
 
-btnSync.addEventListener('click', () => callAction(syncToNotion, 'Sync only'));
+btnSync.addEventListener('click', () => callAction(syncToNotion, 'Soft sync'));
 btnClear.addEventListener('click', () => {
   if (!confirm('Archive all pages in the Notion database? This cannot be undone.')) return;
   callAction(clearNotionDatabase, 'Clear database');
 });
-btnClearSync.addEventListener('click', () => {
-  if (!confirm('Force add will create a new page for every sheet row and can create duplicates. Continue?')) return;
-  callAction(forceAddToNotion, 'Force add');
+btnHardSync.addEventListener('click', () => {
+  if (
+    !confirm(
+      'Hard sync will re-write every sheet row to Notion: properties, cover, icon, and page body—even when nothing changed. Rows no longer on the sheet are still archived. Continue?'
+    )
+  )
+    return;
+  callAction(hardSyncToNotion, 'Hard sync');
 });
 
 // --- Init ---

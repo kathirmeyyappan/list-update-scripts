@@ -29,9 +29,9 @@ Create a `.env` file with: `GOOGLE_API_KEY`, `MAL_CLIENT_ID`, `NOTION_TOKEN`, `D
 
 | Command      | What to do |
 |-------------|------------|
-| `clear`     | Archive every page in the Notion database. |
-| `sync`      | Diff-based sync: update changed pages, add new rows, archive pages no longer in the sheet. |
-| `force-add` | Append a new page per sheet row (no clear, no prune; can create duplicates). |
+| `clear`      | Archive every page in the Notion database. |
+| `sync`       | **Soft sync:** diff-based — update when the content hash changed, add new rows, archive pages no longer in the sheet. |
+| `hard-sync`  | **Hard sync:** same flow as soft sync, but **always** re-writes every row (properties, cover, icon, body) even if the hash matches. Still archives sheet-absent pages. |
 
 Wipe and re-import: run `clear` then `sync`.
 
@@ -40,10 +40,10 @@ Wipe and re-import: run `clear` then `sync`.
 ```bash
 npm run cli clear
 npm run cli sync
-npm run cli force-add
+npm run cli hard-sync
 ```
 
-Or run `npm run cli` and type `clear`, `sync`, `force-add`, or `exit`.
+Or run `npm run cli` and type `clear`, `sync`, `hard-sync`, or `exit`.
 
 ---
 
@@ -58,11 +58,11 @@ Same three actions as the CLI. The app is in `public/`; you serve it locally or 
 3. Open the config panel and set the **Password** (must match the worker’s `AUTH_PASSWORD`) and worker URL if needed.
 4. Use the three buttons:
 
-| Button                 | What to do |
+| Button (left → right)  | What to do |
 |------------------------|------------|
+| **Soft sync**          | Hash-aware: update only when content changed, add new, archive missing from sheet. |
+| **Hard sync** (muted orange) | Re-write **every** sheet row to Notion (full replace of props + body) even if unchanged; confirms before running. |
 | **Clear database**     | Archive all pages in the Notion database. |
-| **Sync only**          | Diff-based sync: update changed, add new, archive missing. |
-| **Force add (append)** | Add a new page for every sheet row (can create duplicates). |
 
 ### Stats
 
@@ -70,7 +70,7 @@ After a run, the UI shows counts:
 
 - **Created** — New Notion page added.
 - **Updated** — Existing page content updated.
-- **Unchanged** — Row matched an existing page and content was identical (no write).
+- **Unchanged** — Row matched an existing page and content was identical (no write). **Hard sync** does not use this path; expect **Updated** for almost every row instead.
 - **Archived** — Page was archived (after Clear: all; after Sync: pages whose anime is no longer in the sheet).
 - **Skipped** — Row had no MAL link; skipped.
 - **Errors** — A Notion or API call failed for that item.

@@ -11,7 +11,7 @@ sync/
 ├── AGENT_CONTEXT.md          # this file
 ├── README.md                 # user docs (CLI + Web UI)
 ├── package.json              # "cli": "node cli.js", dotenv
-├── cli.js                    # CLI entry: reads .env, runAction(clear|sync|force-add)
+├── cli.js                    # CLI entry: reads .env, runAction(clear|sync|hard-sync)
 ├── cloudflare/
 │   └── worker.js             # Worker: /notion, /sheets, /mal → upstream APIs
 └── public/
@@ -35,7 +35,7 @@ flowchart LR
     UI[script.js\nlocalStorage + Worker]
   end
   subgraph logic["public/notionSync.js"]
-    Sync[clear / sync / force-add]
+    Sync[clear / sync / hard-sync]
   end
   Notion[(Notion DB)]
   Sheet --> Sync
@@ -146,7 +146,9 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 
 - **Signature:** `splitTextIntoParagraphs(text = '', chunkSize = 1800)`. Splits on newlines, then chunks each paragraph into ≤ chunkSize chars; returns array of Notion paragraph blocks. Empty input → one empty paragraph block.
 
-### Action flow (clear / sync / force-add)
+### Action flow (clear / soft sync / hard sync)
+
+Shared row loop is **`runNotionSync(config, { respectHash, progressLabel })`** (internal). **`syncToNotion`** = soft (`respectHash: true`); **`hardSyncToNotion`** = hard (`respectHash: false`).
 
 ```mermaid
 flowchart TB
@@ -154,25 +156,18 @@ flowchart TB
     C1[POST /search] --> C2[filter by database_id]
     C2 --> C3[PATCH each page archived]
   end
-  subgraph sync["sync"]
-    S1[getSheetData] --> S2[populateMalCache]
+  subgraph sync["sync / hard-sync"]
+    S1[getFilteredSheetRows] --> S2[populateMalCache]
     S2 --> S3[fetchExistingPagesByMalId]
     S3 --> S4[for each row: buildRowPayload]
     S4 --> S5{has MAL ID?}
     S5 -->|no| skip[skipped]
-    S5 -->|yes| S6{existing + same hash?}
+    S5 -->|yes| S6{soft sync and existing + same hash?}
     S6 -->|yes| unc[unchanged]
     S6 -->|no| S7{existing?}
     S7 -->|yes| upd[PATCH page + replacePageContent]
     S7 -->|no| crt[POST page]
     S4 --> S8[archive pages not in sheet]
-  end
-  subgraph force["force-add"]
-    F1[getSheetData] --> F2[populateMalCache]
-    F2 --> F3[for each row: buildRowPayload]
-    F3 --> F4{has MAL ID?}
-    F4 -->|no| Fskip[skipped]
-    F4 -->|yes| Fcrt[POST page]
   end
 ```
 
@@ -181,15 +176,15 @@ flowchart TB
 - **Signature:** `clearNotionDatabase(config)`.
 - POST Notion `v1/search` (paginated), filter results by `parent.database_id === NOTION_DATABASE_ID` (compact, no hyphens). Collect all page IDs, then PATCH each `pages/{id}` with `{ archived: true }`. Calls onProgress and onStats (archived / errors).
 
-### syncToNotion (exported)
+### syncToNotion (exported) — soft sync
 
 - **Signature:** `syncToNotion(config)`.
-- getSheetData → filter rows where row[2] non-empty → populateMalCache → fetchExistingPagesByMalId. For each row: buildRowPayload; if no malId → skipped. If existing page with same syncHash → unchanged. If existing and hash differs → PATCH page (properties + icon) then replacePageContent → updated. If no existing → POST pages with parent data_source_id → created. Tracks seenMalIds. After loop, archives every page in pagesByMalId whose MAL ID not in seenMalIds. 200ms delay between row requests. onProgress / onStats as in Stats section.
+- Calls `runNotionSync` with `respectHash: true`, progress label `Soft syncing`. Same as below; **skips** Notion writes when existing page’s stored **Sync Hash** matches the newly computed hash → **unchanged**.
 
-### forceAddToNotion (exported)
+### hardSyncToNotion (exported) — hard sync
 
-- **Signature:** `forceAddToNotion(config)`.
-- getSheetData → filter rows → populateMalCache. No fetchExistingPagesByMalId. For each row: buildRowPayload; if no malId → skipped; else POST pages (created). 200ms delay. No archival. onProgress / onStats.
+- **Signature:** `hardSyncToNotion(config)`.
+- Calls `runNotionSync` with `respectHash: false`, progress label `Hard syncing`. Same pipeline as soft sync (fetch index, create/update/archive missing from sheet), but **never** takes the unchanged shortcut: every row with a MAL ID triggers PATCH + `replacePageContent` if the page exists, or POST if new. **Sync Hash** on each page is still updated from the latest payload. Expect **updated** ≈ row count (minus skips); **unchanged** stays 0.
 
 ---
 
@@ -236,8 +231,8 @@ flowchart LR
 **Files:** `public/script.js`, `public/index.html`
 
 - **Config:** localStorage key `notion_sync_config`. Required key: `PASSWORD`. FIELDS: `{ id: 'cfg-password', key: 'PASSWORD', label: 'Password', type: 'password', required: true }`. DEFAULTS include WORKER_URL, SHEET_KEY, SHEET_TAB_NAME, MAL_USER_NAME, DATA_SOURCE_ID, NOTION_DATABASE_ID.
-- **Buttons → actions:** btn-clear → clearNotionDatabase, btn-sync → syncToNotion, btn-clear-sync → forceAddToNotion. All call `callAction(fn, label)` which checks config, resets stats, sets loading, calls `fn(getConfig())`, then sets status.
-- **DOM IDs:** btn-clear, btn-sync, btn-clear-sync, btn-config, status-message, status-tag, config-panel, btn-save-config, cfg-warning, progress-wrap, progress-bar, st-created, st-updated, st-unchanged, st-archived, st-skipped, st-errors, cfg-password.
+- **Buttons → actions (left to right):** btn-sync → syncToNotion (soft), btn-hard-sync → hardSyncToNotion (confirm dialog), btn-clear → clearNotionDatabase. All call `callAction(fn, label)` which checks config, resets stats, sets loading, calls `fn(getConfig())`, then sets status.
+- **DOM IDs:** btn-sync, btn-hard-sync, btn-clear, btn-config, status-message, status-tag, config-panel, btn-save-config, cfg-warning, progress-wrap, progress-bar, st-created, st-updated, st-unchanged, st-archived, st-skipped, st-errors, cfg-password. **Hard sync** uses `.btn-caution` (muted burnt orange `#7c2d12`, aligned with other action buttons).
 - **getConfig():** Merges DEFAULTS, loadConfig(), and adds onProgress (setProgress) and onStats (setStats). setProgress updates progress bar and status message; setStats writes to st-* elements.
 
 ---
@@ -265,4 +260,4 @@ Object with numeric fields (all optional): **created**, **updated**, **unchanged
 
 ## Rate limiting
 
-- syncToNotion and forceAddToNotion: `ROW_DELAY_MS` (200) after each row to reduce Notion 429 risk.
+- `runNotionSync` (soft + hard): `ROW_DELAY_MS` (200) after each row that performs a create or update to reduce Notion 429 risk.
