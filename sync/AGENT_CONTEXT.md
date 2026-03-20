@@ -143,7 +143,7 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 - **extractMalIdFromUrl(url):** Regex `/anime/(\\d+)/` → number or null.
 - **buildRowKey(row):** `row[12]` → malUrl; extractMalIdFromUrl(malUrl) → `{ malId, malUrl }`.
 - **sortRowsByNotionLastEdited(rows, pagesByMalId):** Stable sort by ascending Notion `lastEditedAt` (MAL ID → lookup in `pagesByMalId`). No MAL ID or no matching page → sort key **+∞** (processed after rows with a timestamp).
-- **computeRowHash(payloadCore):** FNV-1a over JSON of `{ properties, children, icon }` → hex string. **Excludes** property **`MAL Score`** from the hash input (MAL API score noise). Strips `.webp` / `.jpg` extensions in the JSON string used for hashing (cover/icon URL jitter). Does not mutate the payload sent to Notion (full properties including **MAL Score** still PATCH).
+- **computeRowHash(payloadCore):** FNV-1a over JSON of `{ properties, children, icon }` → hex string. As a temporary workaround, it strips `.webp` / `.jpg` extensions in the JSON string used for hashing (so image format jitter doesn’t affect the hash), without mutating the actual payload sent to Notion.
 - **buildRowPayload(row, malCache, config):** Builds Notion payload from row + MAL cache; **`children`** from **`buildAnimePageChildren`** in `notionPageContent.js`; sets **ID** and **Sync Hash**; returns `{ payloadCore, key, hash }`. Row indices and Notion property names as in "Google Sheet format" and "Notion schema" above.
 - **notionHeaders(config):** Returns `Notion-Version: 2022-06-28`, Content-Type, accept; if !WORKER_URL and NOTION_TOKEN, adds `Authorization: Bearer {NOTION_TOKEN}`.
 - **createStats():** Returns `{ created: 0, updated: 0, unchanged: 0, archived: 0, skipped: 0, errors: 0 }`.
