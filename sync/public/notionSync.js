@@ -182,6 +182,7 @@ async function fetchExistingPagesByMalId(config) {
         pagesByMalId[malIdKey] = {
           pageId: page.id,
           syncHash: syncHashValue,
+          lastEditedAt: page.last_edited_time ?? null,
         };
       } else {
         pagesWithoutMalId.add(page.id);
@@ -210,6 +211,24 @@ function buildRowKey(row) {
   const malUrl = row[12] ?? '';
   const malId = extractMalIdFromUrl(malUrl);
   return { malId, malUrl };
+}
+
+// Order sheet rows by each row's Notion page `last_edited_time` (MAL ID → pagesByMalId). Oldest first.
+// Rows with no MAL id, or no page in the index yet, are sorted after the rest (stable).
+function sortRowsByNotionLastEdited(rows, pagesByMalId) {
+  const t = (malId) => {
+    if (malId == null) return Number.POSITIVE_INFINITY;
+    const e = pagesByMalId[String(malId)];
+    const iso = e?.lastEditedAt;
+    return iso ? Date.parse(iso) || 0 : Number.POSITIVE_INFINITY;
+  };
+  return rows
+    .map((row, i) => ({ row, i }))
+    .sort((a, b) => {
+      const d = t(buildRowKey(a.row).malId) - t(buildRowKey(b.row).malId);
+      return d !== 0 ? d : a.i - b.i;
+    })
+    .map((x) => x.row);
 }
 
 function computeRowHash(payloadCore) {
@@ -446,11 +465,12 @@ async function runNotionSync(config, mode) {
 
   const malCache = await populateMalCache(config);
   const { pagesByMalId } = await fetchExistingPagesByMalId(config);
+  const rowOrder = sortRowsByNotionLastEdited(rows, pagesByMalId);
   const seenMalIds = new Set();
   const stats = createStats();
   if (onStats) onStats(stats);
 
-  for (const row of rows) {
+  for (const row of rowOrder) {
     const { payloadCore, key, hash } = buildRowPayload(row, malCache, config);
     const malId = key.malId;
     const animeName = String(row[2] ?? '');

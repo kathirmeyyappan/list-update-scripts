@@ -136,12 +136,13 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 
 ### fetchExistingPagesByMalId (internal)
 
-- POST Notion `databases/{NOTION_DATABASE_ID}/query` (paginated, page_size 100). For each result: read property **ID** (or **userDefined:ID**) as number, **Sync Hash** as rich_text[0].plain_text. Returns `{ pagesByMalId: { [malIdKey]: { pageId, syncHash } }, pagesWithoutMalId: Set<pageId> }`. If no `NOTION_DATABASE_ID`, returns empty structures.
+- POST Notion `databases/{NOTION_DATABASE_ID}/query` (paginated, page_size 100). For each result: read property **ID** (or **userDefined:ID**) as number, **Sync Hash** as rich_text[0].plain_text; also **`last_edited_time`** from the page object as **`lastEditedAt`**. Returns `{ pagesByMalId: { [malIdKey]: { pageId, syncHash, lastEditedAt } }, pagesWithoutMalId: Set<pageId> }`. If no `NOTION_DATABASE_ID`, returns empty structures.
 
 ### Helpers (internal unless noted)
 
 - **extractMalIdFromUrl(url):** Regex `/anime/(\\d+)/` → number or null.
 - **buildRowKey(row):** `row[12]` → malUrl; extractMalIdFromUrl(malUrl) → `{ malId, malUrl }`.
+- **sortRowsByNotionLastEdited(rows, pagesByMalId):** Stable sort by ascending Notion `lastEditedAt` (MAL ID → lookup in `pagesByMalId`). No MAL ID or no matching page → sort key **+∞** (processed after rows with a timestamp).
 - **computeRowHash(payloadCore):** FNV-1a over JSON of `{ properties, children, icon }` → hex string. As a temporary workaround, it strips `.webp` / `.jpg` extensions in the JSON string used for hashing (so image format jitter doesn’t affect the hash), without mutating the actual payload sent to Notion.
 - **buildRowPayload(row, malCache, config):** Builds Notion payload from row + MAL cache; **`children`** from **`buildAnimePageChildren`** in `notionPageContent.js`; sets **ID** and **Sync Hash**; returns `{ payloadCore, key, hash }`. Row indices and Notion property names as in "Google Sheet format" and "Notion schema" above.
 - **notionHeaders(config):** Returns `Notion-Version: 2022-06-28`, Content-Type, accept; if !WORKER_URL and NOTION_TOKEN, adds `Authorization: Bearer {NOTION_TOKEN}`.
@@ -154,7 +155,7 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 
 ### Action flow (clear / soft sync / hard sync)
 
-Shared row loop is **`runNotionSync(config, { respectHash, progressLabel })`** (internal). **`syncToNotion`** = soft (`respectHash: true`); **`hardSyncToNotion`** = hard (`respectHash: false`).
+Shared row loop is **`runNotionSync(config, { respectHash, progressLabel })`** (internal). **`syncToNotion`** = soft (`respectHash: true`); **`hardSyncToNotion`** = hard (`respectHash: false`). After loading `pagesByMalId`, sheet rows are iterated in **`sortRowsByNotionLastEdited`** order (oldest Notion `last_edited` first).
 
 ```mermaid
 flowchart TB
