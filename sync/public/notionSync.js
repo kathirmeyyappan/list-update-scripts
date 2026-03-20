@@ -7,6 +7,8 @@
 // CLI mode (direct, no worker):
 //   config = { NOTION_TOKEN, GOOGLE_API_KEY, MAL_CLIENT_ID, SHEET_KEY, ... }
 
+import { buildAnimePageChildren } from './notionPageContent.js';
+
 const ROW_DELAY_MS = 200;
 
 // Route a fetch through the Cloudflare worker (if configured) or call directly.
@@ -24,35 +26,6 @@ function apiFetch(url, options = {}, config = {}) {
   delete headers['X-MAL-CLIENT-ID'];
 
   return fetch(workerUrl, { ...options, headers });
-}
-
-export function splitTextIntoParagraphs(text = '', chunkSize = 1800) {
-  const paragraphs = text.split(/\n+/);
-  const blocks = [];
-
-  for (const p of paragraphs) {
-    let remaining = p;
-    while (remaining.length > 0) {
-      blocks.push({
-        object: 'block',
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [{ type: 'text', text: { content: remaining.slice(0, chunkSize) } }],
-        },
-      });
-      remaining = remaining.slice(chunkSize);
-    }
-  }
-
-  if (blocks.length === 0) {
-    blocks.push({
-      object: 'block',
-      type: 'paragraph',
-      paragraph: { rich_text: [{ type: 'text', text: { content: '' } }] },
-    });
-  }
-
-  return blocks;
 }
 
 export async function populateMalCache(config) {
@@ -271,14 +244,14 @@ function buildRowPayload(row, malCache, config) {
   const malId = key.malId;
 
   let imgUrl = '';
-  let malSynopsisBlocks = splitTextIntoParagraphs('');
+  let malSynopsisText = '';
   let malScore = null;
 
   if (malId != null) {
     const cached = malCache[String(malId)];
     if (cached) {
       imgUrl = cached.image ?? '';
-      malSynopsisBlocks = splitTextIntoParagraphs(cached.synopsis ?? '');
+      malSynopsisText = cached.synopsis ?? '';
       malScore = cached.mean !== undefined && cached.mean !== 'NA'
         ? Number(cached.mean)
         : null;
@@ -289,7 +262,7 @@ function buildRowPayload(row, malCache, config) {
     console.warn(`No anime ID found in URL for "${animeName}": ${malUrl}`);
   }
 
-  const paragraphBlocks = splitTextIntoParagraphs(notes);
+  const children = buildAnimePageChildren({ notesText: notes, malSynopsisText });
 
   const properties = {
     Title:              { title: [{ text: { content: animeName } }] },
@@ -306,19 +279,6 @@ function buildRowPayload(row, malCache, config) {
         : [],
     },
   };
-
-  const children = [
-    {
-      object: 'block', type: 'heading_2',
-      heading_2: { rich_text: [{ type: 'text', text: { content: 'My Comments' } }] },
-    },
-    ...paragraphBlocks,
-    {
-      object: 'block', type: 'heading_2',
-      heading_2: { rich_text: [{ type: 'text', text: { content: 'MAL Synopsis' } }] },
-    },
-    ...malSynopsisBlocks,
-  ];
 
   const payloadCore = {
     properties,

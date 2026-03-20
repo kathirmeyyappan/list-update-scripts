@@ -17,12 +17,13 @@ sync/
 └── public/
     ├── index.html            # UI shell, buttons, config panel, progress, stats
     ├── script.js             # UI logic: config (localStorage), buttons → notionSync
-    ├── notionSync.js         # All sync logic (sheet, MAL, Notion); shared by CLI and UI
+    ├── notionSync.js         # Sync orchestration (sheet, MAL, Notion API); shared by CLI and UI
+    ├── notionPageContent.js  # Page body blocks + text→paragraph helpers (no API/sync)
     └── config.template.js    # (if present) template for worker URL etc.
 ```
 
 - **Entry points:** `cli.js` (Node, `node cli.js` or `npm run cli`), `public/` (static app, `script.js` + `index.html`).
-- **Single source of truth for sync:** `public/notionSync.js`. No sync logic in CLI or UI beyond calling its exports.
+- **Sync orchestration:** `public/notionSync.js`. **Notion page layout / block trees:** `public/notionPageContent.js` (imported by `notionSync.js`).
 
 ```mermaid
 flowchart LR
@@ -98,7 +99,16 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 - **Properties** (set by buildRowPayload):  
   `Title` (title), `Given Score`, `Score Out of 100`, `Watch Year`, `Release Year`, `MAL Score` (number), `Caught up?` (select Yes/No), `MAL Link` (url), `Cover` (files), **`ID`** (number, MAL ID), **`Sync Hash`** (rich_text). Optional `icon` (external image URL) when cover exists.
 - **ID / Sync Hash:** Used only for diffing. **ID** = MAL anime ID from URL. **Sync Hash** = FNV-1a hash of payload (properties + children + icon). When querying, code also accepts `userDefined:ID` for **ID**.
-- **Page body (blocks):** Heading "My Comments", then paragraph blocks from notes; heading "MAL Synopsis", then paragraph blocks from MAL synopsis. Text is chunked by `splitTextIntoParagraphs(text, 1800)` into paragraphs ≤1800 chars.
+- **Page body (blocks):** Built by **`buildAnimePageChildren`** in `notionPageContent.js` (headings + paragraph blocks; extend there for richer styling).
+
+---
+
+## notionPageContent.js — page body only
+
+**File:** `public/notionPageContent.js` — pure block construction; no fetch, no sheet indices.
+
+- **splitTextIntoParagraphs(text, chunkSize = 1800):** Splits on newlines, chunks each run to ≤ `chunkSize` chars; returns Notion `paragraph` blocks. Empty input → one empty paragraph.
+- **buildAnimePageChildren({ notesText, malSynopsisText }):** Returns the `children` array for create/PATCH body: heading "My Comments", notes paragraphs, heading "MAL Synopsis", synopsis paragraphs. **Edit this file** to add callouts, toggles, dividers, etc.
 
 ---
 
@@ -133,7 +143,7 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 - **extractMalIdFromUrl(url):** Regex `/anime/(\\d+)/` → number or null.
 - **buildRowKey(row):** `row[12]` → malUrl; extractMalIdFromUrl(malUrl) → `{ malId, malUrl }`.
 - **computeRowHash(payloadCore):** FNV-1a over JSON of `{ properties, children, icon }` → hex string. As a temporary workaround, it strips `.webp` / `.jpg` extensions in the JSON string used for hashing (so image format jitter doesn’t affect the hash), without mutating the actual payload sent to Notion.
-- **buildRowPayload(row, malCache, config):** Builds Notion payload from row + MAL cache; sets **ID** and **Sync Hash**; returns `{ payloadCore, key, hash }`. Row indices and Notion property names as in "Google Sheet format" and "Notion schema" above.
+- **buildRowPayload(row, malCache, config):** Builds Notion payload from row + MAL cache; **`children`** from **`buildAnimePageChildren`** in `notionPageContent.js`; sets **ID** and **Sync Hash**; returns `{ payloadCore, key, hash }`. Row indices and Notion property names as in "Google Sheet format" and "Notion schema" above.
 - **notionHeaders(config):** Returns `Notion-Version: 2022-06-28`, Content-Type, accept; if !WORKER_URL and NOTION_TOKEN, adds `Authorization: Bearer {NOTION_TOKEN}`.
 - **createStats():** Returns `{ created: 0, updated: 0, unchanged: 0, archived: 0, skipped: 0, errors: 0 }`.
 - **getFilteredSheetRows(config):** getSheetData then filter rows where row[2] non-empty.
@@ -141,10 +151,6 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 - **archiveNotionPage(pageId, config):** PATCH page archived, returns res.ok.
 - **createNotionPage(resolvedDataSourceId, payloadCore, config, stats, logLabel):** POST page, updates stats.created or stats.errors, logs on error.
 - **replacePageContent(pageId, children, config, stats):** Archive existing blocks then append new children. Increments stats.errors on PATCH failures. Not exported.
-
-### splitTextIntoParagraphs (exported)
-
-- **Signature:** `splitTextIntoParagraphs(text = '', chunkSize = 1800)`. Splits on newlines, then chunks each paragraph into ≤ chunkSize chars; returns array of Notion paragraph blocks. Empty input → one empty paragraph block.
 
 ### Action flow (clear / soft sync / hard sync)
 
