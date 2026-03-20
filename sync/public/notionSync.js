@@ -232,14 +232,17 @@ function sortRowsByNotionLastEdited(rows, pagesByMalId) {
 }
 
 function computeRowHash(payloadCore) {
-  // Build a minimal view for hashing without mutating the real payload
+  // Hash-only copy: omit MAL Score (API jitter) and normalize image URLs below — never mutate payloadCore.
+  const props = payloadCore.properties ?? {};
+  const propertiesForHash = { ...props };
+  delete propertiesForHash['MAL Score'];
   const base = {
-    properties: payloadCore.properties,
+    properties: propertiesForHash,
     children: payloadCore.children,
     icon: payloadCore.icon ?? null,
   };
   let json = JSON.stringify(base);
-  // TEMP: ignore image extension jitter (.webp vs .jpg) by stripping the extension in the hash string only
+  // Ignore image extension jitter (.webp vs .jpg) in the hash string only
   json = json.replace(/\.(webp|jpe?g)"/gi, '"');
   let hash = 2166136261; // FNV-1a 32-bit offset basis
   for (let i = 0; i < json.length; i++) {
