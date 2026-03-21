@@ -11,6 +11,30 @@ import { buildAnimePageChildren } from './notionPageContent.js';
 
 const ROW_DELAY_MS = 200;
 
+/** Transient Notion errors — bounded retries, not infinite. */
+const NOTION_RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+const NOTION_FETCH_MAX_ATTEMPTS = 5;
+const NOTION_RETRY_BASE_MS = 500;
+const NOTION_RETRY_CAP_MS = 16_000;
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Same as apiFetch but retries 429/502/503/504 with backoff (max NOTION_FETCH_MAX_ATTEMPTS). */
+async function apiFetchNotionRetry(url, options, config) {
+  let lastRes;
+  for (let attempt = 0; attempt < NOTION_FETCH_MAX_ATTEMPTS; attempt++) {
+    lastRes = await apiFetch(url, options, config);
+    if (lastRes.ok) return lastRes;
+    if (!NOTION_RETRYABLE_STATUS.has(lastRes.status)) return lastRes;
+    if (attempt < NOTION_FETCH_MAX_ATTEMPTS - 1) {
+      await sleep(Math.min(NOTION_RETRY_BASE_MS * 2 ** attempt, NOTION_RETRY_CAP_MS));
+    }
+  }
+  return lastRes;
+}
+
 // Route a fetch through the Cloudflare worker (if configured) or call directly.
 function apiFetch(url, options = {}, config = {}) {
   if (!config.WORKER_URL) return fetch(url, options);
@@ -367,7 +391,7 @@ export async function clearNotionDatabase(config) {
   console.log(`Done. Archived ${total} pages.`);
 }
 
-// Replaces page body: archive existing blocks then append new children.
+// Replaces page body: archive existing blocks (sequential + retry) then append. No append if any archive still fails (avoids duplicate sections).
 async function replacePageContent(pageId, children, config, stats) {
   const headers = notionHeaders(config);
 
@@ -380,9 +404,10 @@ async function replacePageContent(pageId, children, config, stats) {
     if (startCursor) url.searchParams.set('start_cursor', startCursor);
     url.searchParams.set('page_size', '100');
 
-    const res = await apiFetch(url.toString(), { headers }, config);
+    const res = await apiFetchNotionRetry(url.toString(), { headers }, config);
     if (!res.ok) {
       const text = await res.text();
+      if (stats) stats.errors = (stats.errors ?? 0) + 1;
       throw new Error(`Failed to fetch children for page ${pageId} (${res.status}): ${text.slice(0, 500)}`);
     }
 
@@ -395,24 +420,23 @@ async function replacePageContent(pageId, children, config, stats) {
     startCursor = data.next_cursor;
   }
 
-  await Promise.all(
-    blockIds.map(async (id) => {
-      const res = await apiFetch(`https://api.notion.com/v1/blocks/${id}`, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({ archived: true }),
-      }, config);
-      if (!res.ok) {
-        if (stats) stats.errors = (stats.errors ?? 0) + 1;
-        const text = await res.text();
-        console.error(`Failed to archive block ${id} (${res.status}): ${text.slice(0, 300)}`);
-      }
-    })
-  );
+  for (const id of blockIds) {
+    const res = await apiFetchNotionRetry(`https://api.notion.com/v1/blocks/${id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ archived: true }),
+    }, config);
+    if (!res.ok) {
+      if (stats) stats.errors = (stats.errors ?? 0) + 1;
+      const text = await res.text();
+      console.error(`Failed to archive block ${id} (${res.status}) after retries: ${text.slice(0, 300)}`);
+      throw new Error(`Failed to archive block ${id} (${res.status})`);
+    }
+  }
 
   if (!children || children.length === 0) return;
 
-  const appendRes = await apiFetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+  const appendRes = await apiFetchNotionRetry(`https://api.notion.com/v1/blocks/${pageId}/children`, {
     method: 'PATCH',
     headers,
     body: JSON.stringify({ children }),

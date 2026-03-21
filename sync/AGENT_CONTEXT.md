@@ -125,6 +125,11 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
   - `https://api.myanimelist.net*` → `{WORKER_URL}/mal*`
 - If no `WORKER_URL`, uses `fetch(url, options)` as-is (CLI adds `Authorization` and `X-MAL-CLIENT-ID` via notionHeaders / MAL calls).
 
+### apiFetchNotionRetry (internal)
+
+- **Signature:** `apiFetchNotionRetry(url, options, config)`.
+- Wraps **`apiFetch`**: on **429 / 502 / 503 / 504**, waits with exponential backoff (base 500ms, cap 16s) and retries, **max 5 attempts total** — not infinite. Other status codes return immediately. Used inside **`replacePageContent`** for list children, archive block, and append children.
+
 ### getSheetData (internal)
 
 - GET `https://sheets.googleapis.com/v4/spreadsheets/{SHEET_KEY}/values/{SHEET_TAB_NAME}!A2:N`. With worker: no query param; without worker: `?key={GOOGLE_API_KEY}`. Returns `data.values` (array of rows) or `[]`.
@@ -150,7 +155,7 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 - **reportProgress(done, total, label, stats, onProgress, onStats):** Calls onProgress and onStats (onStats batched every 10 or at total).
 - **archiveNotionPage(pageId, config):** PATCH page archived, returns res.ok.
 - **createNotionPage(resolvedDataSourceId, payloadCore, config, stats, logLabel):** POST page, updates stats.created or stats.errors, logs on error.
-- **replacePageContent(pageId, children, config, stats):** Archive existing blocks then append new children. Increments stats.errors on PATCH failures. Not exported.
+- **replacePageContent(pageId, children, config, stats):** Lists children, **archives each block sequentially** (each call uses **`apiFetchNotionRetry`**), then appends new children (retry). If any archive still fails after retries, **throws** (does **not** append) so the page does not get duplicate sections. Increments **stats.errors** once per final failure. Not exported.
 
 ### Action flow (clear / soft sync / hard sync)
 
@@ -258,7 +263,7 @@ Object with numeric fields (all optional): **created**, **updated**, **unchanged
 
 ## Error handling
 
-- notionSync: Throws on getSheetData, populateMalCache, fetchExistingPagesByMalId, or replacePageContent failure. Logs and increments stats.errors for per-page or per-block failures instead of throwing where the loop should continue.
+- notionSync: Throws on getSheetData, populateMalCache, fetchExistingPagesByMalId, or replacePageContent failure (after retries where applicable). **replacePageContent** failures are caught in the sync loop (`console.error`); **stats.errors** already incremented inside **replacePageContent** for that failure.
 - CLI: try/catch around runAction; logs error and process.exit(1).
 - UI: callAction try/catch; sets status message to error string and status-tag to 'error'.
 
@@ -267,3 +272,4 @@ Object with numeric fields (all optional): **created**, **updated**, **unchanged
 ## Rate limiting
 
 - `runNotionSync` (soft + hard): `ROW_DELAY_MS` (200) after each row that performs a create or update to reduce Notion 429 risk.
+- **replacePageContent:** Sequential block archival (not parallel) plus **`apiFetchNotionRetry`** on transient errors to reduce 503/504 storms and avoid duplicate body content on partial failure.
