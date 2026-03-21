@@ -391,51 +391,11 @@ export async function clearNotionDatabase(config) {
   console.log(`Done. Archived ${total} pages.`);
 }
 
-// Replaces page body: archive existing blocks (sequential + retry) then append. No append if any archive still fails (avoids duplicate sections).
+// Appends body after caller’s PATCH with erase_content (blocks only, not DB properties).
 async function replacePageContent(pageId, children, config, stats) {
-  const headers = notionHeaders(config);
-
-  let hasMore = true;
-  let startCursor;
-  const blockIds = [];
-
-  while (hasMore) {
-    const url = new URL(`https://api.notion.com/v1/blocks/${pageId}/children`);
-    if (startCursor) url.searchParams.set('start_cursor', startCursor);
-    url.searchParams.set('page_size', '100');
-
-    const res = await apiFetchNotionRetry(url.toString(), { headers }, config);
-    if (!res.ok) {
-      const text = await res.text();
-      if (stats) stats.errors = (stats.errors ?? 0) + 1;
-      throw new Error(`Failed to fetch children for page ${pageId} (${res.status}): ${text.slice(0, 500)}`);
-    }
-
-    const data = await res.json();
-    for (const block of data.results ?? []) {
-      blockIds.push(block.id);
-    }
-
-    hasMore = Boolean(data.has_more);
-    startCursor = data.next_cursor;
-  }
-
-  for (const id of blockIds) {
-    const res = await apiFetchNotionRetry(`https://api.notion.com/v1/blocks/${id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ archived: true }),
-    }, config);
-    if (!res.ok) {
-      if (stats) stats.errors = (stats.errors ?? 0) + 1;
-      const text = await res.text();
-      console.error(`Failed to archive block ${id} (${res.status}) after retries: ${text.slice(0, 300)}`);
-      throw new Error(`Failed to archive block ${id} (${res.status})`);
-    }
-  }
-
   if (!children || children.length === 0) return;
 
+  const headers = notionHeaders(config);
   const appendRes = await apiFetchNotionRetry(`https://api.notion.com/v1/blocks/${pageId}/children`, {
     method: 'PATCH',
     headers,
@@ -495,15 +455,20 @@ async function runNotionSync(config, mode) {
       stats.unchanged++;
       done++;
       reportProgress(done, total, progressLabel, stats, onProgress, onStats);
-      continue;
+      continue; // no PATCH — page body + DB properties left as-is
     }
 
     if (existing) {
       stats.updated++;
-      const patchRes = await apiFetch(`https://api.notion.com/v1/pages/${existing.pageId}`, {
+      // erase_content clears in-page blocks only (review/synopsis area); `properties` still updates DB columns.
+      const patchRes = await apiFetchNotionRetry(`https://api.notion.com/v1/pages/${existing.pageId}`, {
         method: 'PATCH',
         headers,
-        body: JSON.stringify({ properties: payloadCore.properties, icon: payloadCore.icon }),
+        body: JSON.stringify({
+          properties: payloadCore.properties,
+          icon: payloadCore.icon,
+          erase_content: true,
+        }),
       }, config);
 
       if (!patchRes.ok) {
@@ -518,6 +483,7 @@ async function runNotionSync(config, mode) {
         }
       }
     } else {
+      // New page: POST creates row + initial body — no erase (nothing to clear).
       await createNotionPage(resolvedDataSourceId, payloadCore, config, stats, animeName);
     }
 

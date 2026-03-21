@@ -128,7 +128,7 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 ### apiFetchNotionRetry (internal)
 
 - **Signature:** `apiFetchNotionRetry(url, options, config)`.
-- Wraps **`apiFetch`**: on **429 / 502 / 503 / 504**, waits with exponential backoff (base 500ms, cap 16s) and retries, **max 5 attempts total** — not infinite. Other status codes return immediately. Used inside **`replacePageContent`** for list children, archive block, and append children.
+- Wraps **`apiFetch`**: on **429 / 502 / 503 / 504**, waits with exponential backoff (base 500ms, cap 16s) and retries, **max 5 attempts total** — not infinite. Other status codes return immediately. Used for **PATCH page** (properties + `erase_content` + icon) and **append block children** in **`replacePageContent`**.
 
 ### getSheetData (internal)
 
@@ -155,7 +155,7 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 - **reportProgress(done, total, label, stats, onProgress, onStats):** Calls onProgress and onStats (onStats batched every 10 or at total).
 - **archiveNotionPage(pageId, config):** PATCH page archived, returns res.ok.
 - **createNotionPage(resolvedDataSourceId, payloadCore, config, stats, logLabel):** POST page, updates stats.created or stats.errors, logs on error.
-- **replacePageContent(pageId, children, config, stats):** Lists children, **archives each block sequentially** (each call uses **`apiFetchNotionRetry`**), then appends new children (retry). If any archive still fails after retries, **throws** (does **not** append) so the page does not get duplicate sections. Increments **stats.errors** once per final failure. Not exported.
+- **replacePageContent(pageId, children, config, stats):** **Append only** (uses **`apiFetchNotionRetry`**). The sync loop **PATCH**es the page first with **`erase_content: true`** (Notion removes all block children in one request), then this appends `children`. If `children` is empty, no-op (page is already cleared). Not exported.
 
 ### Action flow (clear / soft sync / hard sync)
 
@@ -207,7 +207,7 @@ flowchart TB
 | MAL | GET | `api.myanimelist.net/v2/users/{user}/animelist` (paginated, X-MAL-CLIENT-ID) |
 | Notion | POST | `api.notion.com/v1/search` (clear: collect page IDs by database_id) |
 | Notion | POST | `api.notion.com/v1/databases/{id}/query` (sync: pagesByMalId) |
-| Notion | PATCH | `api.notion.com/v1/pages/{id}` (update properties/icon or archived: true) |
+| Notion | PATCH | `api.notion.com/v1/pages/{id}` (update properties/icon; sync updates use **`erase_content: true`** to clear body before append; archived: true for clear) |
 | Notion | POST | `api.notion.com/v1/pages` (create; parent data_source_id) |
 | Notion | GET | `api.notion.com/v1/blocks/{id}/children?page_size=100` (paginated) |
 | Notion | PATCH | `api.notion.com/v1/blocks/{id}` (archived: true) |
@@ -272,4 +272,4 @@ Object with numeric fields (all optional): **created**, **updated**, **unchanged
 ## Rate limiting
 
 - `runNotionSync` (soft + hard): `ROW_DELAY_MS` (200) after each row that performs a create or update to reduce Notion 429 risk.
-- **replacePageContent:** Sequential block archival (not parallel) plus **`apiFetchNotionRetry`** on transient errors to reduce 503/504 storms and avoid duplicate body content on partial failure.
+- **Body replace:** **`erase_content`** on page PATCH (one call) instead of archiving each block; then append children with retry.
