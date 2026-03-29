@@ -219,11 +219,4 @@ function runPartialSyncUI() {
 }
 
 
-// add custom menu with both full + partial sync
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu("Notion Sync Utilities")
-    .addItem("Sync ALL rows (timeout likely)", "runFullSync")
-    .addItem("Sync RANGE of rows", "runPartialSyncUI")
-    .addToUi();
-}
+// Menus: see menus.gs (single onOpen for the project)
