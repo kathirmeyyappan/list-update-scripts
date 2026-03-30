@@ -1,6 +1,6 @@
 /**
- * Notion page body & text helpers for anime entries.
- * Keeps block trees / styling out of sync orchestration (notionSync.js).
+ * Notion page body, property shapes, and block-level API helpers.
+ * Pure block construction + rich_text helpers; HTTP is injected for replacePageContent.
  */
 
 /** Split plain text into Notion paragraph blocks (≤ chunkSize chars each). */
@@ -84,4 +84,37 @@ export function buildAnimePageChildren({ notesText, malSynopsisText }) {
       },
     },
   ];
+}
+
+/** Notion `rich_text` property from a plain string (empty → empty rich_text). */
+export function notionRichTextProperty(value) {
+  const s = String(value ?? '');
+  if (!s) return { rich_text: [] };
+  return { rich_text: [{ type: 'text', text: { content: s } }] };
+}
+
+/**
+ * Append page body blocks after a PATCH with erase_content.
+ * @param {string} pageId
+ * @param {object[]} children
+ * @param {object} config
+ * @param {object|null} [stats]
+ * @param {{ notionHeaders: (c: object) => object, apiFetchNotionRetry: (url: string, opts: object, c: object) => Promise<Response> }} notionFetch
+ */
+export async function replacePageContent(pageId, children, config, stats, notionFetch) {
+  if (!children || children.length === 0) return;
+
+  const { notionHeaders, apiFetchNotionRetry } = notionFetch;
+  const headers = notionHeaders(config);
+  const appendRes = await apiFetchNotionRetry(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ children }),
+  }, config);
+
+  if (!appendRes.ok) {
+    if (stats) stats.errors = (stats.errors ?? 0) + 1;
+    const text = await appendRes.text();
+    throw new Error(`Failed to append children for page ${pageId} (${appendRes.status}): ${text.slice(0, 500)}`);
+  }
 }

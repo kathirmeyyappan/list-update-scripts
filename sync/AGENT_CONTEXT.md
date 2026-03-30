@@ -18,12 +18,15 @@ sync/
     ├── index.html            # UI shell, buttons, config panel, progress, stats
     ├── script.js             # UI logic: config (localStorage), buttons → notionSync
     ├── notionSync.js         # Sync orchestration (sheet, MAL, Notion API); shared by CLI and UI
-    ├── notionPageContent.js  # Page body blocks + text→paragraph helpers (no API/sync)
+    ├── notionPageUtils.js    # Page body blocks, rich_text helpers, replacePageContent (injected fetch)
+    ├── syncUtils/
+    │   ├── stats.js          # createStats, reportProgress
+    │   └── rowPayload.js     # MAL URL key, sync hash, buildRowPayload
     └── config.template.js    # (if present) template for worker URL etc.
 ```
 
 - **Entry points:** `cli.js` (Node, `node cli.js` or `npm run cli`), `public/` (static app, `script.js` + `index.html`).
-- **Sync orchestration:** `public/notionSync.js`. **Notion page layout / block trees:** `public/notionPageContent.js` (imported by `notionSync.js`).
+- **Sync orchestration:** `public/notionSync.js`. **Page blocks + property shapes:** `notionPageUtils.js`. **Row/hash/payload:** `syncUtils/rowPayload.js`; **progress stats:** `syncUtils/stats.js`.
 
 ```mermaid
 flowchart LR
@@ -97,18 +100,34 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 
 - **Page parent:** New pages are created with `parent: { data_source_id: resolvedDataSourceId }` where `resolvedDataSourceId = config.NOTION_DATA_SOURCE_ID ?? config.DATA_SOURCE_ID`.
 - **Properties** (set by buildRowPayload):  
-  `Title` (title), `Given Score`, `Score Out of 100`, `Watch Year`, `Release Year`, `MAL Score` (number), `Caught up?` (select Yes/No), `MAL Link` (url), `Cover` (files), **`ID`** (number, MAL ID), **`Sync Hash`** (rich_text). Optional `icon` (external image URL) when cover exists.
-- **ID / Sync Hash:** Used only for diffing. **ID** = MAL anime ID from URL. **Sync Hash** = FNV-1a hash of payload (properties + children + icon). When querying, code also accepts `userDefined:ID` for **ID**.
-- **Page body (blocks):** Built by **`buildAnimePageChildren`** in `notionPageContent.js` (headings + paragraph blocks; extend there for richer styling).
+  `Title` (title), `Given Score`, `Score Out of 100`, `Watch Year`, `Release Year`, `MAL Score` (number), `Caught up?` (select Yes/No), `MAL Link` (url), `Cover` (files), **`MAL Official Title`**, **`English Title`**, **`Japanese Title`** (all rich_text / Notion **Text** — from MAL `title` and `alternative_titles.en` / `.ja`), **`ID`** (number, MAL ID), **`Sync Hash`** (rich_text). Optional `icon` (external image URL) when cover exists.
+- **ID / Sync Hash:** Used only for diffing. **ID** = MAL anime ID from URL. **Sync Hash** = FNV-1a hash of payload (**properties before** the three MAL title fields + children + icon) — **`MAL Official Title` / `English Title` / `Japanese Title` are not hashed** so MAL metadata changes alone do not flip the hash. When querying, code also accepts `userDefined:ID` for **ID**.
+- **Page body (blocks):** Built by **`buildAnimePageChildren`** in `notionPageUtils.js` (headings + paragraph blocks; extend there for richer styling).
 
 ---
 
-## notionPageContent.js — page body only
+## notionPageUtils.js — page body, property shapes, block append
 
-**File:** `public/notionPageContent.js` — pure block construction; no fetch, no sheet indices.
+**File:** `public/notionPageUtils.js`
 
-- **splitTextIntoParagraphs(text, chunkSize = 1800):** Splits on newlines, chunks each run to ≤ `chunkSize` chars; returns Notion `paragraph` blocks. Empty input → one empty paragraph.
-- **buildAnimePageChildren({ notesText, malSynopsisText }):** Returns the `children` array for create/PATCH body: heading "My Comments", notes paragraphs, heading "MAL Synopsis", synopsis paragraphs. **Edit this file** to add callouts, toggles, dividers, etc.
+- **splitTextIntoParagraphs(text, chunkSize = 1800):** Paragraph blocks from plain text (≤ `chunkSize` chars per block).
+- **buildAnimePageChildren({ notesText, malSynopsisText }):** `children` for create/PATCH: "My Comments", notes, "MAL Synopsis", synopsis, etc.
+- **notionRichTextProperty(value):** `{ rich_text: [...] }` for Notion Text columns.
+- **replacePageContent(pageId, children, config, stats, { notionHeaders, apiFetchNotionRetry }):** PATCH `blocks/{pageId}/children` with new body (after page `erase_content`). Injects Notion fetch helpers from `notionSync.js`.
+
+---
+
+## syncUtils/rowPayload.js — sheet row → payload + hash
+
+**File:** `public/syncUtils/rowPayload.js`
+
+- **extractMalIdFromUrl, buildRowKey, computeRowHash, buildRowPayload(row, malCache)** — see "Google Sheet format" / "Notion schema".
+
+---
+
+## syncUtils/stats.js
+
+**File:** `public/syncUtils/stats.js` — **createStats**, **reportProgress** (used by `notionSync.js` and clear flow).
 
 ---
 
@@ -128,7 +147,7 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 ### apiFetchNotionRetry (internal)
 
 - **Signature:** `apiFetchNotionRetry(url, options, config)`.
-- Wraps **`apiFetch`**: on **429 / 502 / 503 / 504**, waits with exponential backoff (base 500ms, cap 16s) and retries, **max 5 attempts total** — not infinite. Other status codes return immediately. Used for **PATCH page** (properties + `erase_content` + icon) and **append block children** in **`replacePageContent`**.
+- Wraps **`apiFetch`**: on **429 / 502 / 503 / 504**, waits with exponential backoff (base 500ms, cap 16s) and retries, **max 5 attempts total** — not infinite. Other status codes return immediately. Used for **PATCH page** (properties + `erase_content` + icon) and **append block children** in **`replacePageContent`** (`notionPageUtils.js`).
 
 ### getSheetData (internal)
 
@@ -136,26 +155,21 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 
 ### populateMalCache (exported)
 
-- **Signature:** `populateMalCache(config) → Promise<Record<string, { mean, image, malTitle, synopsis }>>`.
-- Paginated GET MAL `v2/users/{MAL_USER_NAME}/animelist?fields=id,title,synopsis,mean,main_picture&nsfw=true&limit=500&offset=0`. Follows `paging.next`. Key = string MAL id; value = `{ mean, image (large|medium), malTitle, synopsis }`. Throws on non-OK response.
+- **Signature:** `populateMalCache(config) → Promise<Record<string, cacheEntry>>`.
+- Paginated GET MAL `v2/users/{MAL_USER_NAME}/animelist?fields=id,title,synopsis,mean,main_picture,alternative_titles&nsfw=true&limit=500&offset=0`. Follows `paging.next`. Cache includes `officialTitle`, `altEn`, `altJa`, `synopsis`, etc. Throws on non-OK response.
 
 ### fetchExistingPagesByMalId (internal)
 
 - POST Notion `databases/{NOTION_DATABASE_ID}/query` (paginated, page_size 100). For each result: read property **ID** (or **userDefined:ID**) as number, **Sync Hash** as rich_text[0].plain_text. Returns `{ pagesByMalId: { [malIdKey]: { pageId, syncHash } }, pagesWithoutMalId: Set<pageId> }`. If no `NOTION_DATABASE_ID`, returns empty structures.
 
-### Helpers (internal unless noted)
+### Other internals
 
-- **extractMalIdFromUrl(url):** Regex `/anime/(\\d+)/` → number or null.
-- **buildRowKey(row):** `row[12]` → malUrl; extractMalIdFromUrl(malUrl) → `{ malId, malUrl }`.
-- **computeRowHash(payloadCore):** FNV-1a over JSON of `{ properties, children, icon }` → hex string. Strips `.webp` / `.jpg` extensions in the JSON string used for hashing (cover/icon URL jitter), without mutating the actual payload sent to Notion.
-- **buildRowPayload(row, malCache, config):** Builds Notion payload from row + MAL cache; **`children`** from **`buildAnimePageChildren`** in `notionPageContent.js`; sets **ID** and **Sync Hash**; returns `{ payloadCore, key, hash }`. Row indices and Notion property names as in "Google Sheet format" and "Notion schema" above.
 - **notionHeaders(config):** Returns `Notion-Version: 2022-06-28`, Content-Type, accept; if !WORKER_URL and NOTION_TOKEN, adds `Authorization: Bearer {NOTION_TOKEN}`.
-- **createStats():** Returns `{ created: 0, updated: 0, unchanged: 0, archived: 0, skipped: 0, errors: 0 }`.
 - **getFilteredSheetRows(config):** getSheetData then filter rows where row[2] non-empty.
-- **reportProgress(done, total, label, stats, onProgress, onStats):** Calls onProgress and onStats (onStats batched every 10 or at total).
 - **archiveNotionPage(pageId, config):** PATCH page archived, returns res.ok.
 - **createNotionPage(resolvedDataSourceId, payloadCore, config, stats, logLabel):** POST page, updates stats.created or stats.errors, logs on error.
-- **replacePageContent(pageId, children, config, stats):** **Append only** (uses **`apiFetchNotionRetry`**). The sync loop **PATCH**es the page first with **`erase_content: true`** (Notion removes all block children in one request), then this appends `children`. If `children` is empty, no-op (page is already cleared). Not exported.
+
+Row/hash/payload helpers live in **`syncUtils/rowPayload.js`**; stats helpers in **`syncUtils/stats.js`**; **`replacePageContent`** in **`notionPageUtils.js`** (sync passes `notionHeaders` + `apiFetchNotionRetry`).
 
 ### Action flow (clear / soft sync / hard sync)
 
@@ -263,7 +277,7 @@ Object with numeric fields (all optional): **created**, **updated**, **unchanged
 
 ## Error handling
 
-- notionSync: Throws on getSheetData, populateMalCache, fetchExistingPagesByMalId, or replacePageContent failure (after retries where applicable). **replacePageContent** failures are caught in the sync loop (`console.error`); **stats.errors** already incremented inside **replacePageContent** for that failure.
+- notionSync: Throws on getSheetData, populateMalCache, fetchExistingPagesByMalId, or **notionPageUtils.replacePageContent** failure (after retries where applicable). Those failures are caught in the sync loop (`console.error`); **stats.errors** is incremented inside **replacePageContent** for that failure.
 - CLI: try/catch around runAction; logs error and process.exit(1).
 - UI: callAction try/catch; sets status message to error string and status-tag to 'error'.
 
