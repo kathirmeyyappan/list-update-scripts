@@ -62,8 +62,6 @@ export function buildAnimePageChildren({ notesText, malSynopsisText }) {
       heading_2: { rich_text: [{ type: 'text', text: { content: 'My Comments' } }] },
     },
     ...paragraphBlocks,
-    emptyParagraph,
-    divider,
     {
       object: 'block',
       type: 'heading_2',
