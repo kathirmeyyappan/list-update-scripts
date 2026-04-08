@@ -1,5 +1,9 @@
 /**
  * Sheet row → Notion payload: MAL URL keying, sync hash, DB properties + page children.
+ *
+ * Sync Hash is derived from a small semantic object (title, scores, notes, MAL synopsis, cover
+ * image URL). Cover URLs are normalized for hashing (strip trailing image extension) so CDN
+ * extension jitter does not flip the hash. Full Notion blocks are not hashed — compare before building blocks.
  */
 
 import { buildAnimePageChildren, notionRichTextProperty } from '../notionPageUtils.js';
@@ -18,14 +22,19 @@ export function buildRowKey(row) {
   return { malId, malUrl };
 }
 
-export function computeRowHash(payloadCore) {
-  const base = {
-    properties: payloadCore.properties,
-    children: payloadCore.children,
-    icon: payloadCore.icon ?? null,
-  };
-  let json = JSON.stringify(base);
-  json = json.replace(/\.(webp|jpe?g)"/gi, '"');
+/**
+ * Strip trailing image extension from a cover URL so `.webp` vs `.jpg` hashes the same.
+ * (Same intent as the old full-payload hash, applied to the URL field only.)
+ */
+function normalizeCoverImageUrlForHash(url) {
+  const s = String(url ?? '').trim();
+  if (!s) return '';
+  return s.replace(/\.(webp|jpe?g)$/i, '');
+}
+
+/** FNV-1a 32-bit over JSON.stringify(semantic). */
+export function computeSyncHash(semantic) {
+  const json = JSON.stringify(semantic);
   let hash = 2166136261;
   for (let i = 0; i < json.length; i++) {
     hash ^= json.charCodeAt(i);
@@ -34,7 +43,10 @@ export function computeRowHash(payloadCore) {
   return (hash >>> 0).toString(16);
 }
 
-export function buildRowPayload(row, malCache) {
+/**
+ * Everything needed for hash comparison and for building the full Notion payload (single parse).
+ */
+export function extractRowContext(row, malCache) {
   const animeName = String(row[2] ?? '');
   const trueScore = row[3] !== undefined ? Number(row[3]) : null;
   const score = row[3] !== undefined ? Math.round(Number(row[3]) * 10) : null;
@@ -50,9 +62,10 @@ export function buildRowPayload(row, malCache) {
   let imgUrl = '';
   let malSynopsisText = '';
   let malScore = null;
+  let cached = null;
 
   if (malId != null) {
-    const cached = malCache[String(malId)];
+    cached = malCache[String(malId)] ?? null;
     if (cached) {
       imgUrl = cached.image ?? '';
       malSynopsisText = cached.synopsis ?? '';
@@ -66,20 +79,62 @@ export function buildRowPayload(row, malCache) {
     console.warn(`No anime ID found in URL for "${animeName}": ${malUrl}`);
   }
 
-  const children = buildAnimePageChildren({ notesText: notes, malSynopsisText });
+  return {
+    key,
+    malId,
+    animeName,
+    trueScore,
+    score,
+    watchYear,
+    releaseYear,
+    caughtUp,
+    malUrl,
+    notes,
+    imgUrl,
+    malSynopsisText,
+    malScore,
+    cached,
+  };
+}
+
+function syncHashSemanticFromContext(ctx) {
+  return {
+    animeTitle: ctx.animeName,
+    givenScore: Number.isFinite(ctx.trueScore) ? ctx.trueScore : null,
+    malScore: ctx.malScore !== null && ctx.malScore !== undefined && Number.isFinite(ctx.malScore)
+      ? ctx.malScore
+      : null,
+    notes: String(ctx.notes ?? ''),
+    malSynopsis: String(ctx.malSynopsisText ?? ''),
+    imageUrl: normalizeCoverImageUrlForHash(ctx.imgUrl),
+  };
+}
+
+/** Hash + key only — no Notion blocks/properties (for soft-sync skip before building payload). */
+export function getRowSyncKeyAndHash(row, malCache) {
+  const ctx = extractRowContext(row, malCache);
+  const hash = computeSyncHash(syncHashSemanticFromContext(ctx));
+  return { key: ctx.key, hash, ctx };
+}
+
+export function buildPayloadFromContext(ctx, hash) {
+  const children = buildAnimePageChildren({
+    notesText: ctx.notes,
+    malSynopsisText: ctx.malSynopsisText,
+  });
 
   const properties = {
-    Title:              { title: [{ text: { content: animeName } }] },
-    'Given Score':      { number: Number.isFinite(trueScore) ? trueScore : null },
-    'Score Out of 100': { number: Number.isFinite(score) ? score : null },
-    'Watch Year':       { number: Number.isFinite(watchYear) ? watchYear : null },
-    'Release Year':     { number: Number.isFinite(releaseYear) ? releaseYear : null },
-    'MAL Score':        { number: Number.isFinite(malScore) ? malScore : null },
-    'Caught up?':       { select: { name: caughtUp ? 'Yes' : 'No' } },
-    'MAL Link':         { url: malUrl || null },
+    Title:              { title: [{ text: { content: ctx.animeName } }] },
+    'Given Score':      { number: Number.isFinite(ctx.trueScore) ? ctx.trueScore : null },
+    'Score Out of 100': { number: Number.isFinite(ctx.score) ? ctx.score : null },
+    'Watch Year':       { number: Number.isFinite(ctx.watchYear) ? ctx.watchYear : null },
+    'Release Year':     { number: Number.isFinite(ctx.releaseYear) ? ctx.releaseYear : null },
+    'MAL Score':        { number: Number.isFinite(ctx.malScore) ? ctx.malScore : null },
+    'Caught up?':       { select: { name: ctx.caughtUp ? 'Yes' : 'No' } },
+    'MAL Link':         { url: ctx.malUrl || null },
     Cover: {
-      files: imgUrl
-        ? [{ name: 'cover.jpg', external: { url: imgUrl } }]
+      files: ctx.imgUrl
+        ? [{ name: 'cover.jpg', external: { url: ctx.imgUrl } }]
         : [],
     },
   };
@@ -89,14 +144,13 @@ export function buildRowPayload(row, malCache) {
     children,
   };
 
-  if (imgUrl) {
-    payloadCore.icon = { type: 'external', external: { url: imgUrl } };
+  if (ctx.imgUrl) {
+    payloadCore.icon = { type: 'external', external: { url: ctx.imgUrl } };
   }
 
-  const hash = computeRowHash(payloadCore);
-
+  const malId = ctx.malId;
   if (malId != null) {
-    const c = malCache[String(malId)];
+    const c = ctx.cached;
     if (c) {
       payloadCore.properties['MAL Official Title'] = notionRichTextProperty(c.officialTitle);
       payloadCore.properties['English Title'] = notionRichTextProperty(c.altEn);
@@ -119,5 +173,13 @@ export function buildRowPayload(row, malCache) {
     rich_text: [{ type: 'text', text: { content: hash } }],
   };
 
-  return { payloadCore, key, hash };
+  return { payloadCore };
+}
+
+/** Full payload; use when you will write. For soft-sync skips, prefer getRowSyncKeyAndHash + buildPayloadFromContext. */
+export function buildRowPayload(row, malCache) {
+  const ctx = extractRowContext(row, malCache);
+  const hash = computeSyncHash(syncHashSemanticFromContext(ctx));
+  const { payloadCore } = buildPayloadFromContext(ctx, hash);
+  return { payloadCore, key: ctx.key, hash };
 }

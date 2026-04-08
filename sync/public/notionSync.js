@@ -8,7 +8,7 @@
 //   config = { NOTION_TOKEN, GOOGLE_API_KEY, MAL_CLIENT_ID, SHEET_KEY, ... }
 
 import { replacePageContent } from './notionPageUtils.js';
-import { buildRowPayload } from './syncUtils/rowPayload.js';
+import { buildPayloadFromContext, getRowSyncKeyAndHash } from './syncUtils/rowPayload.js';
 import { createStats, reportProgress } from './syncUtils/stats.js';
 
 const ROW_DELAY_MS = 200;
@@ -242,9 +242,9 @@ async function runNotionSync(config, mode) {
   if (onStats) onStats(stats);
 
   for (const row of rows) {
-    const { payloadCore, key, hash } = buildRowPayload(row, malCache);
+    const { key, hash, ctx } = getRowSyncKeyAndHash(row, malCache);
     const malId = key.malId;
-    const animeName = String(row[2] ?? '');
+    const animeName = ctx.animeName;
 
     if (malId == null) {
       console.warn(`Skipping row without MAL ID for "${animeName}".`);
@@ -264,6 +264,8 @@ async function runNotionSync(config, mode) {
       reportProgress(done, total, progressLabel, stats, onProgress, onStats);
       continue;
     }
+
+    const { payloadCore } = buildPayloadFromContext(ctx, hash);
 
     if (existing) {
       stats.updated++;

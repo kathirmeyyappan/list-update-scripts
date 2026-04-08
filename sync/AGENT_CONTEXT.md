@@ -21,7 +21,7 @@ sync/
     ├── notionPageUtils.js    # Page body blocks, rich_text helpers, replacePageContent (injected fetch)
     ├── syncUtils/
     │   ├── stats.js          # createStats, reportProgress
-    │   └── rowPayload.js     # MAL URL key, sync hash, buildRowPayload
+    │   └── rowPayload.js     # row context, semantic sync hash, full Notion payload
     └── config.template.js    # (if present) template for worker URL etc.
 ```
 
@@ -80,7 +80,7 @@ flowchart LR
 
 - **Range:** `{SHEET_TAB_NAME}!A2:N` (rows 2 onward, columns A–N → indices 0–13).
 - **Row filtering:** Rows with empty `row[2]` are skipped (no title = skip).
-- **Column usage in buildRowPayload / buildRowKey:**
+- **Column usage in buildRowKey / extractRowContext:**
 
 | Index | Usage |
 |-------|--------|
@@ -99,9 +99,9 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 ## Notion schema (anime database / data source)
 
 - **Page parent:** New pages are created with `parent: { data_source_id: resolvedDataSourceId }` where `resolvedDataSourceId = config.NOTION_DATA_SOURCE_ID ?? config.DATA_SOURCE_ID`.
-- **Properties** (set by buildRowPayload):  
+- **Properties** (set by `buildPayloadFromContext`):  
   `Title` (title), `Given Score`, `Score Out of 100`, `Watch Year`, `Release Year`, `MAL Score` (number), `Caught up?` (select Yes/No), `MAL Link` (url), `Cover` (files), **`MAL Official Title`**, **`English Title`**, **`Japanese Title`** (all rich_text / Notion **Text** — from MAL `title` and `alternative_titles.en` / `.ja`), **`ID`** (number, MAL ID), **`Sync Hash`** (rich_text). Optional `icon` (external image URL) when cover exists.
-- **ID / Sync Hash:** Used only for diffing. **ID** = MAL anime ID from URL. **Sync Hash** = FNV-1a hash of payload (**properties before** the three MAL title fields + children + icon) — **`MAL Official Title` / `English Title` / `Japanese Title` are not hashed** so MAL metadata changes alone do not flip the hash. When querying, code also accepts `userDefined:ID` for **ID**.
+- **ID / Sync Hash:** Used only for diffing. **ID** = MAL anime ID from URL. **Sync Hash** = FNV-1a hash of a **small JSON object** (not the full Notion payload): **`animeTitle`**, **`givenScore`**, **`malScore`**, **`notes`** (sheet col N), **`malSynopsis`** (MAL API synopsis), **`imageUrl`** (MAL cover URL from cache, with trailing `.(webp|jpg|jpeg)` stripped before hashing so CDN extension jitter does not change the hash). **Not** in the hash: watch year, release year, caught up, MAL display title columns, page **block** layout. Soft sync will not detect changes that touch only those fields; use **hard sync** to push them. When querying, code also accepts `userDefined:ID` for **ID**.
 - **Page body (blocks):** Built by **`buildAnimePageChildren`** in `notionPageUtils.js` (headings + paragraph blocks; extend there for richer styling).
 
 ---
@@ -121,7 +121,7 @@ Unused in sync: 0, 1, 6, 8, 9, 10, 11.
 
 **File:** `public/syncUtils/rowPayload.js`
 
-- **extractMalIdFromUrl, buildRowKey, computeRowHash, buildRowPayload(row, malCache)** — see "Google Sheet format" / "Notion schema".
+- **extractRowContext, computeSyncHash, getRowSyncKeyAndHash, buildPayloadFromContext, buildRowPayload** — see "Google Sheet format" / "Notion schema". Soft sync calls **getRowSyncKeyAndHash** first; only if the hash differs (or new page) does it call **buildPayloadFromContext** (builds `children` + DB properties).
 
 ---
 
@@ -184,15 +184,16 @@ flowchart TB
   subgraph sync["sync / hard-sync"]
     S1[getFilteredSheetRows] --> S2[populateMalCache]
     S2 --> S3[fetchExistingPagesByMalId]
-    S3 --> S4[for each row: buildRowPayload]
+    S3 --> S4[per row: getRowSyncKeyAndHash]
     S4 --> S5{has MAL ID?}
     S5 -->|no| skip[skipped]
     S5 -->|yes| S6{soft sync and existing + same hash?}
     S6 -->|yes| unc[unchanged]
-    S6 -->|no| S7{existing?}
-    S7 -->|yes| upd[PATCH page + replacePageContent]
-    S7 -->|no| crt[POST page]
-    S4 --> S8[archive pages not in sheet]
+    S6 -->|no| S7[buildPayloadFromContext]
+    S7 --> S8{existing page?}
+    S8 -->|yes| upd[PATCH page + replacePageContent]
+    S8 -->|no| crt[POST page]
+    S3 --> S9[archive DB rows missing from sheet]
   end
 ```
 
