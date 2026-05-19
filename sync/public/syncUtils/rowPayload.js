@@ -107,6 +107,7 @@ function syncHashSemanticFromContext(ctx) {
     notes: String(ctx.notes ?? ''),
     malSynopsis: String(ctx.malSynopsisText ?? ''),
     imageUrl: normalizeCoverImageUrlForHash(ctx.imgUrl),
+    caughtUp: ctx.caughtUp,
   };
 }
 
