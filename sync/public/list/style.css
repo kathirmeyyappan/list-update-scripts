@@ -17,7 +17,7 @@ h1 {
 
 #sheet-link {
   display: inline-block;
-  color: #444;
+  color: #878787;
   font-size: 11px;
   text-decoration: none;
   margin-bottom: 14px;
@@ -33,6 +33,8 @@ h1 {
 .dataTables_filter { float: left !important; text-align: left !important; }
 .dt-layout-cell.dt-full { text-align: left !important; }
 .dt-search { text-align: left !important; }
+.dt-layout-row, .dataTables_filter { margin-bottom: 8px !important; }
+div.dt-container { margin-top: 0 !important; }
 
 
 .dataTables_filter input,
