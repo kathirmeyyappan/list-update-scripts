@@ -142,7 +142,11 @@ async function archiveNotionPage(pageId, config) {
 
 async function createNotionPage(resolvedDataSourceId, payloadCore, config, stats, logLabel) {
   const headers = notionHeaders(config);
-  const payload = { parent: { data_source_id: resolvedDataSourceId }, ...payloadCore };
+  const payload = { 
+    parent: { data_source_id: resolvedDataSourceId }, 
+    template: { type: "default" }, 
+    ...payloadCore 
+  };
   const res = await apiFetch('https://api.notion.com/v1/pages', { method: 'POST', headers, body: JSON.stringify(payload) }, config);
   if (res.ok) {
     stats.created++;
