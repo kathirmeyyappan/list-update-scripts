@@ -142,18 +142,29 @@ async function archiveNotionPage(pageId, config) {
 
 async function createNotionPage(resolvedDataSourceId, payloadCore, config, stats, logLabel) {
   const headers = notionHeaders(config);
-  const payload = { 
-    parent: { data_source_id: resolvedDataSourceId }, 
-    template: { type: "default" }, 
-    ...payloadCore 
+  const { children, ...payloadWithoutChildren } = payloadCore;
+  const payload = {
+    parent: { data_source_id: resolvedDataSourceId },
+    template: { type: "default" },
+    ...payloadWithoutChildren,
   };
   const res = await apiFetch('https://api.notion.com/v1/pages', { method: 'POST', headers, body: JSON.stringify(payload) }, config);
-  if (res.ok) {
-    stats.created++;
-  } else {
+  if (!res.ok) {
     stats.errors++;
     const text = await res.text();
     console.error(`Failed to create page for "${logLabel}" (${res.status}): ${text.slice(0, 500)}`);
+    return;
+  }
+
+  stats.created++;
+  const data = await res.json();
+  try {
+    await replacePageContent(data.id, children, config, stats, {
+      notionHeaders,
+      apiFetchNotionRetry,
+    });
+  } catch (err) {
+    console.error(String(err));
   }
 }
 
